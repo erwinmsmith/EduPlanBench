@@ -1,0 +1,27 @@
+[project]
+name = "eduplanbench"
+version = "0.1.0"
+description = "Benchmark for long-horizon agentic learning planning."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+download = ["huggingface_hub>=0.23.0"]
+excel = ["openpyxl>=3.1.0"]
+test = ["pytest>=8.0.0"]
+all = ["huggingface_hub>=0.23.0", "openpyxl>=3.1.0", "pytest>=8.0.0"]
+
+[project.scripts]
+eduplanbench = "eduplanbench.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["eduplanbench*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["rawdataset", "data", "outputs", ".git"]

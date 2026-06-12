@@ -1,0 +1,11 @@
+name: eduplanbench
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip>=23
+  - pytest>=8
+  - openpyxl>=3.1
+  - pip:
+      - huggingface_hub>=0.23.0
+      - -e .

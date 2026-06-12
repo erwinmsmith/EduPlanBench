@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+from eduplanbench.agents import create_agent
+from eduplanbench.core.io import write_jsonl
+from eduplanbench.core.schema import GoalSpec, LearnerProfile, Resource, TaskInstance
+from eduplanbench.data.task_builders import load_tasks
+from eduplanbench.envs import EduPlanEnv
+from eduplanbench.evaluation.metrics import evaluate_traces
+from eduplanbench.core.schema import EpisodeTrace
+
+
+def make_task() -> TaskInstance:
+    return TaskInstance(
+        task_id="tiny",
+        track="track3_kt_simulator",
+        domain="math",
+        horizon=5,
+        learner_profile=LearnerProfile(
+            profile_text="Tiny learner",
+            estimated_mastery={"fractions": 0.25},
+            weak_concepts=["fractions"],
+        ),
+        goal=GoalSpec(target_concepts=["fractions"], target_mastery=0.45, horizon=5),
+        resource_pool=[
+            Resource(
+                resource_id="r1",
+                type="exercise",
+                text="1/2 + 1/3",
+                concepts=["fractions"],
+                difficulty=0.3,
+            )
+        ],
+    )
+
+
+def test_env_agent_episode_smoke() -> None:
+    task = make_task()
+    env = EduPlanEnv(task, seed=1)
+    agent = create_agent("kt_recommender")
+    obs = env.reset()
+    trace = EpisodeTrace(task=task)
+    done = False
+    while not done:
+        action = agent.act(obs)
+        valid, error = action.validate_for(task.resource_pool)
+        result = env.step(action)
+        trace.add_step(obs, action, result, valid, error)
+        obs = result.observation
+        done = result.done
+    trace.final_info = trace.steps[-1]["info"]
+    report = evaluate_traces([trace], run_id="test")
+    assert report.metadata["episodes"] == 1
+    assert report.metrics["valid_action_rate"] == 1.0
+
+
+def test_invalid_action_is_detected() -> None:
+    task = make_task()
+    env = EduPlanEnv(task, seed=1)
+    env.reset()
+    result = env.step(create_agent("kt_recommender").act(env._observation()))
+    assert "hidden" in result.info
+
+
+def test_random_task_sampling_is_seeded(tmp_path) -> None:
+    track_dir = tmp_path / "track3_kt_simulator"
+    rows = []
+    for idx in range(10):
+        task = make_task()
+        task.task_id = f"task_{idx}"
+        rows.append(task)
+    write_jsonl(track_dir / "tasks.jsonl", rows)
+
+    first = [task.task_id for task in load_tasks(tmp_path, "track3_kt_simulator", limit=4, sample="random", seed=7)]
+    second = [task.task_id for task in load_tasks(tmp_path, "track3_kt_simulator", limit=4, sample="random", seed=7)]
+    third = [task.task_id for task in load_tasks(tmp_path, "track3_kt_simulator", limit=4, sample="random", seed=8)]
+
+    assert first == second
+    assert first != third
+    assert first != [f"task_{idx}" for idx in range(4)]

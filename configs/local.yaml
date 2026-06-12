@@ -1,0 +1,9 @@
+# EduPlanBench local defaults.
+raw_dir: rawdataset
+processed_dir: data/processed
+tasks_dir: data/tasks
+outputs_dir: outputs/runs
+llm:
+  provider: deepseek
+  model: deepseek-chat
+  base_url: https://api.deepseek.com
