@@ -58,13 +58,15 @@ You can also use a plain virtual environment:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[download,excel,test]"
+pip install -r requirements.txt
 ```
 
-If you do not need downloads or Excel export:
+Or create a conda environment manually and install with pip:
 
 ```bash
-pip install -e .
+conda create -n eduplanbench python=3.11 -y
+conda activate eduplanbench
+pip install -r requirements.txt
 ```
 
 Create local environment config:

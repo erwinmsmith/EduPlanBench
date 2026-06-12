@@ -1,0 +1,4 @@
+-e .
+huggingface_hub>=0.23.0
+openpyxl>=3.1.0
+pytest>=8.0.0
