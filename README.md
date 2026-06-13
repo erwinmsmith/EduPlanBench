@@ -204,6 +204,30 @@ oracle_prerequisite
 oracle_simulator
 ```
 
+External agent systems can be registered through JSON bridges instead of being reimplemented inside EduPlanBench. Registered external agent ids:
+
+```text
+llm_pddl
+lats
+plan_and_act
+reactree
+hiagent
+```
+
+Clone external repositories:
+
+```bash
+python3 scripts/clone_external_agents.py
+```
+
+Check availability:
+
+```bash
+python3 -m eduplanbench agents list
+```
+
+External agents are disabled by default until their bridge command is configured. See [docs/external_agents.md](docs/external_agents.md).
+
 Each run writes:
 
 ```text

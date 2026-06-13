@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from eduplanbench.agents import create_agent
+from eduplanbench.agents.external import external_agent_status
 from eduplanbench.core.io import write_jsonl
 from eduplanbench.core.schema import GoalSpec, LearnerProfile, Resource, TaskInstance
 from eduplanbench.data.task_builders import load_tasks
@@ -77,3 +78,18 @@ def test_random_task_sampling_is_seeded(tmp_path) -> None:
     assert first == second
     assert first != third
     assert first != [f"task_{idx}" for idx in range(4)]
+
+
+def test_external_agent_registry_is_available() -> None:
+    rows = external_agent_status()
+    names = {row["name"] for row in rows}
+    assert {"llm_pddl", "lats", "plan_and_act", "reactree", "hiagent"}.issubset(names)
+
+
+def test_disabled_external_agent_has_clear_error() -> None:
+    try:
+        create_agent("external:lats")
+    except RuntimeError as exc:
+        assert "registered but disabled" in str(exc)
+    else:
+        raise AssertionError("disabled external agent should not instantiate")

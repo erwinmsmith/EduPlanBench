@@ -38,6 +38,11 @@ rawdataset/
 data/processed/
 data/tasks/
 outputs/
+third_party/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
 
 # Local notes and scratch files
 local_docs/

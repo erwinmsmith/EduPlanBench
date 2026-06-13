@@ -321,6 +321,10 @@ LLM_AGENT_REGISTRY: dict[str, type[LLMPlannerAgent]] = {
 
 def create_agent(name: str, *, llm: str | None = None) -> Agent:
     normalized = name.lower()
+    from eduplanbench.agents.external import ExternalAgentAdapter, is_external_agent
+
+    if normalized.startswith("external:") or is_external_agent(normalized):
+        return ExternalAgentAdapter(normalized)
     if llm or normalized in LLM_AGENT_REGISTRY:
         cls = LLM_AGENT_REGISTRY.get(normalized, ReActPlannerAgent)
         return cls()

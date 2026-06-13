@@ -6,6 +6,7 @@ from pathlib import Path
 from eduplanbench.core.env import load_dotenv
 from eduplanbench.core.io import read_jsonl
 from eduplanbench.core.schema import ALL_TRACKS, TRACK1, TRACK2, TRACK3, EpisodeTrace
+from eduplanbench.agents import external_agent_status
 from eduplanbench.data.downloaders import fetch_huggingface_dataset, fetch_mooccubex_minimal
 from eduplanbench.data.prepare import prepare_track1, prepare_track2, prepare_track3
 from eduplanbench.data.task_builders import build_tasks, task_from_dict
@@ -89,6 +90,10 @@ def main(argv: list[str] | None = None) -> None:
     experiment.add_argument("--sample", choices=["random", "first"], default="random")
     experiment.add_argument("--sample-seed", type=int, default=42)
 
+    agents_cmd = sub.add_parser("agents")
+    agents_sub = agents_cmd.add_subparsers(dest="agents_command", required=True)
+    agents_sub.add_parser("list")
+
     args = parser.parse_args(argv)
     if args.command == "data" and args.data_command == "fetch":
         _cmd_fetch(args)
@@ -108,6 +113,8 @@ def main(argv: list[str] | None = None) -> None:
         _cmd_robustness(args)
     elif args.command == "experiment":
         _cmd_experiment(args)
+    elif args.command == "agents" and args.agents_command == "list":
+        _cmd_agents_list(args)
 
 
 def _track_alias(track: str) -> str:
@@ -213,6 +220,29 @@ def _cmd_robustness(args: argparse.Namespace) -> None:
     )
     add_robustness_table(tables, rows, table_dir)
     print(f"robustness written to {args.experiment_dir / 'robustness'}")
+
+
+def _cmd_agents_list(args: argparse.Namespace) -> None:
+    builtins = [
+        "react",
+        "one_shot",
+        "step_by_step",
+        "cot",
+        "kt_recommender",
+        "static_one_shot",
+        "random",
+        "prerequisite_rule",
+        "difficulty_rule",
+        "oracle",
+    ]
+    print("Built-in agents:")
+    for name in builtins:
+        print(f"  {name}")
+    print("\nExternal agents:")
+    for row in external_agent_status():
+        enabled = "enabled" if row["enabled"] else "disabled"
+        repo = "repo-ok" if row["repo_exists"] else "repo-missing"
+        print(f"  {row['name']}: {row['display_name']} [{enabled}, {repo}, {row['protocol']}]")
 
 
 def _load_episode_traces(run_dir: Path) -> list[EpisodeTrace]:

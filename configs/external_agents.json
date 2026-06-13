@@ -1,0 +1,59 @@
+{
+  "agents": {
+    "llm_pddl": {
+      "display_name": "LLM+P",
+      "repo_url": "https://github.com/Cranial-XIX/llm-pddl.git",
+      "repo_path": "third_party/agents/llm-pddl",
+      "enabled": false,
+      "protocol": "stdio_json",
+      "command": ["python", "bridge.py"],
+      "cwd": "{repo_path}",
+      "timeout_seconds": 300,
+      "notes": "LLM+P is PDDL-domain oriented. Provide a bridge.py in the cloned repo that maps EduPlanBench JSON requests to an EduPlanBench Action JSON response."
+    },
+    "lats": {
+      "display_name": "Language Agent Tree Search",
+      "repo_url": "https://github.com/lapisrocks/LanguageAgentTreeSearch.git",
+      "repo_path": "third_party/agents/LanguageAgentTreeSearch",
+      "enabled": false,
+      "protocol": "stdio_json",
+      "command": ["python", "bridge.py"],
+      "cwd": "{repo_path}",
+      "timeout_seconds": 300,
+      "notes": "LATS has HotPotQA/programming/WebShop entrypoints. Provide a bridge.py that exposes the JSON bridge protocol for EduPlanBench observations."
+    },
+    "plan_and_act": {
+      "display_name": "Plan-and-Act",
+      "repo_url": "https://github.com/SqueezeAILab/plan-and-act.git",
+      "repo_path": "third_party/agents/plan-and-act",
+      "enabled": false,
+      "protocol": "stdio_json",
+      "command": ["python", "bridge.py"],
+      "cwd": "{repo_path}",
+      "timeout_seconds": 300,
+      "notes": "Plan-and-Act is WebArena-oriented. Provide a bridge.py that calls its planner/executor and returns an EduPlanBench action."
+    },
+    "reactree": {
+      "display_name": "ReAcTree",
+      "repo_url": "https://github.com/Choi-JaeWoo/ReAcTree.git",
+      "repo_path": "third_party/agents/ReAcTree",
+      "enabled": false,
+      "protocol": "stdio_json",
+      "command": ["python", "bridge.py"],
+      "cwd": "{repo_path}",
+      "timeout_seconds": 300,
+      "notes": "ReAcTree targets WAH/ALFRED and requires simulator setup. Provide a bridge.py that uses its tree controller over EduPlanBench observations."
+    },
+    "hiagent": {
+      "display_name": "HiAgent",
+      "repo_url": "https://github.com/HiAgent2024/HiAgent.git",
+      "repo_path": "third_party/agents/HiAgent",
+      "enabled": false,
+      "protocol": "stdio_json",
+      "command": ["python", "bridge.py"],
+      "cwd": "{repo_path}",
+      "timeout_seconds": 300,
+      "notes": "HiAgent depends on AgentBoard. Provide a bridge.py that maps EduPlanBench requests to the HiAgent memory/controller and returns an action."
+    }
+  }
+}
