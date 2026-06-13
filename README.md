@@ -24,6 +24,8 @@ eduplanbench/
   simulators/      Rule/BKT student simulator
 scripts/
   build_experiment_tables_compact_xlsx.py
+  download_prepared_data_from_hf.py
+  upload_prepared_data_to_hf.py
 tests/
 configs/
 docs/
@@ -43,6 +45,8 @@ outputs/                    run traces, metrics, reports, workbooks
 ## Documentation
 
 - [docs/external_agents.md](docs/external_agents.md): how to clone, bridge, enable, and evaluate external agent systems such as LLM+P, LATS, Plan-and-Act, ReAcTree, and HiAgent.
+- [data/README.md](data/README.md): prepared-data dataset card for the Hugging Face artifact.
+- [rawdataset/README.md](rawdataset/README.md): raw dataset layout and original download/source links.
 
 ## Setup
 
@@ -112,6 +116,50 @@ EDUPLAN_EXTERNAL_BRIDGE_USE_LLM=auto   # default: use LLM when a key exists
 EDUPLAN_EXTERNAL_BRIDGE_USE_LLM=0      # deterministic bridge fallback, useful for smoke tests
 ```
 
+## Prepared Data From Hugging Face
+
+The fastest server setup is to download the already prepared `data/` artifact. The current local build contains `10000` task instances for each track:
+
+```text
+data/tasks/track1_text_math/tasks.jsonl
+data/tasks/track2_mooc_planning/tasks.jsonl
+data/tasks/track3_kt_simulator/tasks.jsonl
+```
+
+After the Hugging Face dataset repo is published, set its repo id and download it into the repository root:
+
+```bash
+export EDUPLAN_HF_DATASET_REPO=<hf-namespace>/EduPlanBench-data
+
+python3 scripts/download_prepared_data_from_hf.py \
+  --repo-id "$EDUPLAN_HF_DATASET_REPO" \
+  --data-dir data
+```
+
+Then run experiments directly; no raw dataset rebuild is needed:
+
+```bash
+python3 -m eduplanbench experiment \
+  --tracks all \
+  --agents react,one_shot,step_by_step,cot \
+  --llm deepseek \
+  --limit 300 \
+  --sample random \
+  --sample-seed 42
+```
+
+To publish the local prepared data to Hugging Face, log in first and upload `data/processed` plus `data/tasks`:
+
+```bash
+hf auth login
+
+python3 scripts/upload_prepared_data_to_hf.py \
+  --repo-id <hf-namespace>/EduPlanBench-data \
+  --data-dir data
+```
+
+The upload script creates a public dataset repo by default. Add `--private` only if the prepared artifact should not be public.
+
 ## Data Preparation
 
 Expected raw data roots:
@@ -124,6 +172,8 @@ rawdataset/MOOCCubeX/       downloaded MOOCCubeX minimal files
 rawdataset/XES3G5M/         local XES3G5M data
 rawdataset/KT1/             local KT1/EdNet-style data
 ```
+
+See [rawdataset/README.md](rawdataset/README.md) for original download/source links and the exact raw layout.
 
 Eedi is assumed to already exist locally at:
 

@@ -34,7 +34,8 @@ yarn-debug.log*
 yarn-error.log*
 
 # Large local data and generated benchmark artifacts
-rawdataset/
+rawdataset/*
+!rawdataset/README.md
 data/processed/
 data/tasks/
 outputs/
