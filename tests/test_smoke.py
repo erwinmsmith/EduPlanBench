@@ -8,7 +8,8 @@ from eduplanbench.core.schema import GoalSpec, LearnerProfile, Resource, TaskIns
 from eduplanbench.data.task_builders import load_tasks
 from eduplanbench.envs import EduPlanEnv
 from eduplanbench.evaluation.metrics import evaluate_traces
-from eduplanbench.evaluation.tables import build_tables_from_experiment
+from eduplanbench.evaluation.metrics import _metrics_for_trace
+from eduplanbench.evaluation.tables import build_tables_from_experiment, _track1_difficulty, _track2_task_types
 from eduplanbench.experiments import run_experiment_matrix
 from eduplanbench.core.schema import EpisodeTrace
 from eduplanbench.runner import run_benchmark
@@ -149,6 +150,82 @@ def test_tables_include_external_agents(monkeypatch, tmp_path) -> None:
 
     assert [row["Agent"] for row in rows] == ["LATS"]
     assert rows[0]["Overall ↑"] is not None
+
+
+def _trace_for_table(task: TaskInstance, *, final_mastery: float = 0.5) -> EpisodeTrace:
+    trace = EpisodeTrace(task=task)
+    observation = {
+        "goal": {"target_concepts": task.goal.target_concepts},
+        "estimated_mastery": task.learner_profile.estimated_mastery,
+        "candidate_resources": [
+            {
+                "resource_id": resource.resource_id,
+                "concepts": resource.concepts,
+                "difficulty": resource.difficulty,
+            }
+            for resource in task.resource_pool
+        ],
+        "recent_feedback": ["incorrect; needs review"],
+    }
+    action = {
+        "action_type": "recommend_exercise",
+        "resource_id": task.resource_pool[0].resource_id,
+        "target_concepts": task.goal.target_concepts,
+        "rationale": "practice target concept",
+        "payload": {},
+    }
+    trace.steps = [
+        {
+            "observation": observation,
+            "action": action,
+            "reward": 0.0,
+            "done": True,
+            "valid_action": True,
+            "validation_error": "",
+            "info": {"student_feedback": {"elapsed_time": 1.0}, "mastery_gain": 0.0},
+        }
+    ]
+    trace.final_info = {"hidden": {"true_mastery": {task.goal.target_concepts[0]: final_mastery}, "dropout_risk": 0.0}}
+    return trace
+
+
+def test_subgroup_tables_report_counts_and_metrics() -> None:
+    track1_rows = []
+    for label in ("Easy", "Medium", "Hard"):
+        task = make_task()
+        task.track = "track1_text_math"
+        task.metadata = {"difficulty_group": label}
+        trace = _trace_for_table(task, final_mastery=0.5)
+        track1_rows.append((trace, _metrics_for_trace(trace)))
+    t1 = _track1_difficulty({("track1_text_math", "one_shot"): track1_rows})
+    assert t1[0]["Easy N"] == 1
+    assert t1[0]["Medium Overall ↑"] is not None
+    assert t1[0]["Hard Track ↑"] is not None
+
+    track2_rows = []
+    for task_type in ("Goal-to-Path", "Adaptive Replan", "Constraint Planning", "Long-context Memory", "Retention Planning"):
+        task = make_task()
+        task.track = "track2_mooc_planning"
+        task.metadata = {"task_type": task_type}
+        task.constraints = {"task_type": task_type}
+        trace = _trace_for_table(task, final_mastery=0.5)
+        track2_rows.append((trace, _metrics_for_trace(trace)))
+    t2 = _track2_task_types({("track2_mooc_planning", "one_shot"): track2_rows})
+    assert t2[0]["Goal-to-Path N"] == 1
+    assert t2[0]["Adaptive Replan GSR ↑"] is not None
+    assert t2[0]["Retention Planning PR ↑"] is not None
+
+
+def test_track3_track_score_is_clamped_non_negative() -> None:
+    task = make_task()
+    trace = _trace_for_table(task, final_mastery=0.25)
+    trace.steps.append(dict(trace.steps[0]))
+    trace.final_info = {"hidden": {"true_mastery": {"fractions": 0.25}, "dropout_risk": 1.0}}
+
+    metrics = _metrics_for_trace(trace)
+
+    assert metrics["track_score"] == 0.0
+    assert metrics["overall_score"] >= 0.0
 
 
 def test_unified_llm_env_aliases(monkeypatch) -> None:

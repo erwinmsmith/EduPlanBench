@@ -163,6 +163,10 @@ def _track1_difficulty(per_combo: dict) -> list[dict[str, Any]]:
         row = {"Agent": _agent_label(agent)}
         for label in ("Easy", "Medium", "Hard"):
             agg = _agg(groups[label])
+            row[f"{label} N"] = len(groups[label])
+            row[f"{label} Overall ↑"] = agg.get("overall_score")
+            row[f"{label} Core ↑"] = agg.get("core_score")
+            row[f"{label} Track ↑"] = agg.get("track_score")
             row[f"{label} GSR ↑"] = agg.get("gsr")
             row[f"{label} PR ↑"] = agg.get("pr")
         rows.append(row)
@@ -198,7 +202,10 @@ def _track2_task_types(per_combo: dict) -> list[dict[str, Any]]:
                 buckets[t].append(metrics)
         row = {"Agent": _agent_label(agent)}
         for t in task_types:
-            row[f"{t} PR ↑"] = _agg(buckets[t]).get("pr")
+            agg = _agg(buckets[t])
+            row[f"{t} N"] = len(buckets[t])
+            row[f"{t} GSR ↑"] = agg.get("gsr")
+            row[f"{t} PR ↑"] = agg.get("pr")
         rows.append(row)
     return rows
 

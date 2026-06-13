@@ -72,7 +72,7 @@ def _metrics_for_trace(trace: EpisodeTrace) -> dict[str, float]:
             - 0.10 * row["dropout_risk"]
             - 0.10 * row["simulator_exploitation_rate"]
         )
-    row["core_score"] = (
+    row["core_score"] = _clamp01(
         0.35 * row["gsr"]
         + 0.25 * row["pr"]
         + 0.15 * row["adaptation_quality"]
@@ -80,9 +80,13 @@ def _metrics_for_trace(trace: EpisodeTrace) -> dict[str, float]:
         - 0.10 * row["normalized_steps"]
         - 0.05 * min(1.0, row["context_cost"] / 10_000)
     )
-    row["track_score"] = track_score
-    row["overall_score"] = 0.5 * row["core_score"] + 0.5 * row["track_score"]
+    row["track_score"] = _clamp01(track_score)
+    row["overall_score"] = _clamp01(0.5 * row["core_score"] + 0.5 * row["track_score"])
     return row
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
 
 
 def _track1(trace: EpisodeTrace) -> dict[str, float]:
