@@ -8,6 +8,8 @@ from eduplanbench.core.schema import GoalSpec, LearnerProfile, Resource, TaskIns
 from eduplanbench.data.task_builders import load_tasks
 from eduplanbench.envs import EduPlanEnv
 from eduplanbench.evaluation.metrics import evaluate_traces
+from eduplanbench.evaluation.tables import build_tables_from_experiment
+from eduplanbench.experiments import run_experiment_matrix
 from eduplanbench.core.schema import EpisodeTrace
 from eduplanbench.runner import run_benchmark
 
@@ -128,6 +130,25 @@ def test_enabled_external_agent_can_act(monkeypatch) -> None:
     valid, error = action.validate_for(task.resource_pool)
     assert valid, error
     assert action.payload["external_agent"] == "lats"
+
+
+def test_tables_include_external_agents(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("EDUPLAN_EXTERNAL_BRIDGE_USE_LLM", "0")
+    track_dir = tmp_path / "tasks" / "track3_kt_simulator"
+    write_jsonl(track_dir / "tasks.jsonl", [make_task()])
+
+    experiment_dir = run_experiment_matrix(
+        tasks_dir=tmp_path / "tasks",
+        outputs_dir=tmp_path / "runs",
+        tracks=["track3_kt_simulator"],
+        agents=["external:lats"],
+        limit=1,
+    )
+    tables = build_tables_from_experiment(experiment_dir)
+    rows = tables["Track3_Main"]
+
+    assert [row["Agent"] for row in rows] == ["LATS"]
+    assert rows[0]["Overall ↑"] is not None
 
 
 def test_unified_llm_env_aliases(monkeypatch) -> None:

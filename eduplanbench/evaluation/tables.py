@@ -17,7 +17,29 @@ AGENT_LABELS = {
     "react": "ReAct Planner",
     "cot": "CoT Planner",
     "step_by_step": "Step-by-step Planner",
+    "external:llm_pddl": "LLM+P",
+    "llm_pddl": "LLM+P",
+    "external:lats": "LATS",
+    "lats": "LATS",
+    "external:plan_and_act": "Plan-and-Act",
+    "plan_and_act": "Plan-and-Act",
+    "external:reactree": "ReAcTree",
+    "reactree": "ReAcTree",
+    "external:hiagent": "HiAgent",
+    "hiagent": "HiAgent",
 }
+
+PREFERRED_AGENT_ORDER = [
+    "one_shot",
+    "cot",
+    "react",
+    "step_by_step",
+    "external:llm_pddl",
+    "external:lats",
+    "external:plan_and_act",
+    "external:reactree",
+    "external:hiagent",
+]
 
 TRACK_LABELS = {
     "track1_text_math": "Track 1",
@@ -93,11 +115,11 @@ def _load_robustness_table(experiment_dir: Path) -> list[dict[str, Any]]:
 
 def _main_table(per_combo: dict, track: str) -> list[dict[str, Any]]:
     rows = []
-    for agent in ("one_shot", "cot", "react", "step_by_step"):
+    for agent in _agents_for_track(per_combo, track):
         metrics = _agg([row for _, row in per_combo.get((track, agent), [])])
         rows.append(
             {
-                "Agent": AGENT_LABELS[agent],
+                "Agent": _agent_label(agent),
                 "Overall ↑": metrics.get("overall_score"),
                 "Core ↑": metrics.get("core_score"),
                 "Track ↑": metrics.get("track_score"),
@@ -114,11 +136,11 @@ def _main_table(per_combo: dict, track: str) -> list[dict[str, Any]]:
 
 def _track1_specific(per_combo: dict) -> list[dict[str, Any]]:
     rows = []
-    for agent in ("one_shot", "cot", "react", "step_by_step"):
+    for agent in _agents_for_track(per_combo, "track1_text_math"):
         metrics = _agg([row for _, row in per_combo.get(("track1_text_math", agent), [])])
         rows.append(
             {
-                "Agent": AGENT_LABELS[agent],
+                "Agent": _agent_label(agent),
                 "Misconception Acc ↑": metrics.get("misconception_diagnosis_accuracy"),
                 "Feedback Grounding ↑": metrics.get("feedback_grounding"),
                 "Remediation Match ↑": metrics.get("remediation_match"),
@@ -133,12 +155,12 @@ def _track1_specific(per_combo: dict) -> list[dict[str, Any]]:
 
 def _track1_difficulty(per_combo: dict) -> list[dict[str, Any]]:
     rows = []
-    for agent in ("one_shot", "react", "step_by_step"):
+    for agent in _agents_for_track(per_combo, "track1_text_math"):
         groups = {"Easy": [], "Medium": [], "Hard": []}
         for trace, metrics in per_combo.get(("track1_text_math", agent), []):
             diff = _task_difficulty(trace)
             groups[diff].append(metrics)
-        row = {"Agent": AGENT_LABELS[agent]}
+        row = {"Agent": _agent_label(agent)}
         for label in ("Easy", "Medium", "Hard"):
             agg = _agg(groups[label])
             row[f"{label} GSR ↑"] = agg.get("gsr")
@@ -149,11 +171,11 @@ def _track1_difficulty(per_combo: dict) -> list[dict[str, Any]]:
 
 def _track2_specific(per_combo: dict) -> list[dict[str, Any]]:
     rows = []
-    for agent in ("one_shot", "cot", "react", "step_by_step"):
+    for agent in _agents_for_track(per_combo, "track2_mooc_planning"):
         metrics = _agg([row for _, row in per_combo.get(("track2_mooc_planning", agent), [])])
         rows.append(
             {
-                "Agent": AGENT_LABELS[agent],
+                "Agent": _agent_label(agent),
                 "Prereq Violation ↓": metrics.get("prerequisite_violation_rate"),
                 "Sequence Consistency ↑": metrics.get("knowledge_sequence_consistency"),
                 "Resource-Concept Match ↑": metrics.get("resource_concept_match"),
@@ -169,12 +191,12 @@ def _track2_specific(per_combo: dict) -> list[dict[str, Any]]:
 def _track2_task_types(per_combo: dict) -> list[dict[str, Any]]:
     rows = []
     task_types = ["Goal-to-Path", "Adaptive Replan", "Constraint Planning", "Long-context Memory", "Retention Planning"]
-    for agent in ("one_shot", "react", "step_by_step", "cot"):
+    for agent in _agents_for_track(per_combo, "track2_mooc_planning"):
         buckets: dict[str, list[dict[str, float]]] = {t: [] for t in task_types}
         for trace, metrics in per_combo.get(("track2_mooc_planning", agent), []):
             for t in _task_types(trace):
                 buckets[t].append(metrics)
-        row = {"Agent": AGENT_LABELS[agent]}
+        row = {"Agent": _agent_label(agent)}
         for t in task_types:
             row[f"{t} PR ↑"] = _agg(buckets[t]).get("pr")
         rows.append(row)
@@ -183,11 +205,11 @@ def _track2_task_types(per_combo: dict) -> list[dict[str, Any]]:
 
 def _track3_specific(per_combo: dict) -> list[dict[str, Any]]:
     rows = []
-    for agent in ("one_shot", "cot", "react", "step_by_step"):
+    for agent in _agents_for_track(per_combo, "track3_kt_simulator"):
         metrics = _agg([row for _, row in per_combo.get(("track3_kt_simulator", agent), [])])
         rows.append(
             {
-                "Agent": AGENT_LABELS[agent],
+                "Agent": _agent_label(agent),
                 "Mastery Gain ↑": metrics.get("mastery_gain"),
                 "Retention Gain ↑": metrics.get("retention_gain"),
                 "Learning Efficiency ↑": metrics.get("learning_efficiency"),
@@ -202,12 +224,12 @@ def _track3_specific(per_combo: dict) -> list[dict[str, Any]]:
 
 def _track3_action_diag(per_combo: dict) -> list[dict[str, Any]]:
     rows = []
-    for agent in ("one_shot", "cot", "react", "step_by_step"):
+    for agent in _agents_for_track(per_combo, "track3_kt_simulator"):
         dists = [action_distribution(trace) for trace, _ in per_combo.get(("track3_kt_simulator", agent), [])]
         metrics = _agg(dists)
         rows.append(
             {
-                "Agent": AGENT_LABELS[agent],
+                "Agent": _agent_label(agent),
                 "Exercise %": metrics.get("exercise_pct"),
                 "Review %": metrics.get("review_pct"),
                 "Explanation %": metrics.get("explanation_pct"),
@@ -226,6 +248,24 @@ def _agg(rows: list[dict[str, float]]) -> dict[str, float | None]:
         return defaultdict(lambda: None)
     keys = sorted({k for row in rows for k in row})
     return {k: sum(float(row.get(k, 0.0) or 0.0) for row in rows) / len(rows) for k in keys}
+
+
+def _agents_for_track(per_combo: dict, track: str) -> list[str]:
+    present = [agent for combo_track, agent in per_combo if combo_track == track]
+    if not present:
+        return []
+    ordered = [agent for agent in PREFERRED_AGENT_ORDER if agent in present]
+    rest = sorted(agent for agent in present if agent not in set(ordered))
+    return ordered + rest
+
+
+def _agent_label(agent: str) -> str:
+    if agent in AGENT_LABELS:
+        return AGENT_LABELS[agent]
+    if agent.startswith("external:"):
+        raw = agent.split(":", 1)[1]
+        return raw.replace("_", "-")
+    return agent
 
 
 def _write_table_csv(path: Path, rows: list[dict[str, Any]]) -> None:

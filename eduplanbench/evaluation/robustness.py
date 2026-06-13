@@ -38,7 +38,7 @@ def run_robustness(
         for agent_name in agent_names:
             row: dict[str, Any] = {
                 "Track": {"track1_text_math": "Track 1", "track2_mooc_planning": "Track 2", "track3_kt_simulator": "Track 3"}[track],
-                "Agent": {"one_shot": "One-shot", "react": "ReAct"}.get(agent_name, agent_name),
+                "Agent": _agent_label(agent_name),
             }
             for horizon in ROBUSTNESS_HORIZONS:
                 traces: list[EpisodeTrace] = []
@@ -91,3 +91,22 @@ def _avg(rows: list[dict[str, float]], key: str) -> float:
     if not rows:
         return 0.0
     return sum(float(row.get(key, 0.0)) for row in rows) / len(rows)
+
+
+def _agent_label(agent_name: str) -> str:
+    return {
+        "one_shot": "One-shot",
+        "react": "ReAct",
+        "cot": "CoT",
+        "step_by_step": "Step-by-step",
+        "external:llm_pddl": "LLM+P",
+        "llm_pddl": "LLM+P",
+        "external:lats": "LATS",
+        "lats": "LATS",
+        "external:plan_and_act": "Plan-and-Act",
+        "plan_and_act": "Plan-and-Act",
+        "external:reactree": "ReAcTree",
+        "reactree": "ReAcTree",
+        "external:hiagent": "HiAgent",
+        "hiagent": "HiAgent",
+    }.get(agent_name, agent_name)
