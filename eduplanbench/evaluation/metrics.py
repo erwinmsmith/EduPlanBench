@@ -140,8 +140,7 @@ def _track2(trace: EpisodeTrace) -> dict[str, float]:
     violations = 0
     resource_matches = 0
     for step in trace.steps:
-        action = step["action"]
-        targets = set(action.get("target_concepts") or [])
+        targets = set(_effective_step_concepts(step))
         if trace.task.goal.target_concepts and targets.intersection(trace.task.goal.target_concepts) and prereqs and not prereqs.intersection(seen):
             violations += 1
         seen.update(targets)
@@ -192,7 +191,7 @@ def action_distribution(trace: EpisodeTrace) -> dict[str, float]:
         if resource:
             difficulties.append(float(resource.get("difficulty", 0.0)))
         targets = set(step.get("observation", {}).get("goal", {}).get("target_concepts", []))
-        concepts = set(action.get("target_concepts") or [])
+        concepts = set(_effective_step_concepts(step))
         if targets and concepts.intersection(targets):
             target_hits += 1
     return {
@@ -246,7 +245,7 @@ def _path_coherence(trace: EpisodeTrace) -> float:
     targets = trace.task.goal.target_concepts
     aligned = 0
     for step in trace.steps:
-        concepts = step["action"].get("target_concepts") or []
+        concepts = _effective_step_concepts(step)
         if set(concepts).intersection(targets):
             aligned += 1
     return aligned / max(1, len(trace.steps))
@@ -256,7 +255,7 @@ def _sequence_consistency(trace: EpisodeTrace, violations: int) -> float:
     changes = 0
     prev: set[str] | None = None
     for step in trace.steps:
-        concepts = set(step["action"].get("target_concepts") or [])
+        concepts = set(_effective_step_concepts(step))
         if prev is not None and concepts and prev and not concepts.intersection(prev | set(trace.task.goal.target_concepts)):
             changes += 1
         if concepts:
@@ -394,6 +393,24 @@ def _personalization_score(trace: EpisodeTrace) -> float:
         if any(item and item in text for item in weak | target):
             hits += 1
     return hits / max(1, len(trace.steps))
+
+
+def _effective_step_concepts(step: dict) -> list[str]:
+    action = step.get("action", {})
+    rid = action.get("resource_id")
+    if rid:
+        resource = _step_resource(step)
+        if resource and resource.get("concepts"):
+            return list(resource.get("concepts") or [])
+    return list(action.get("target_concepts") or [])
+
+
+def _step_resource(step: dict) -> dict[str, Any] | None:
+    rid = step.get("action", {}).get("resource_id")
+    if not rid:
+        return None
+    resources = step.get("observation", {}).get("candidate_resources", [])
+    return next((item for item in resources if item.get("resource_id") == rid), None)
 
 
 def _feedback_grounding(trace: EpisodeTrace) -> float:

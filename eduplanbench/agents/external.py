@@ -255,14 +255,22 @@ class ExternalAgentAdapter:
 
 
 def _action_from_payload(payload: dict[str, Any], observation: Observation) -> Action:
+    resource = _resource_by_id(observation, payload.get("resource_id"))
+    target_concepts = list(payload.get("target_concepts") or (resource.concepts if resource else observation.goal.target_concepts))
     return Action(
         action_type=str(payload.get("action_type", "diagnostic_quiz")),
         resource_id=payload.get("resource_id"),
-        target_concepts=list(payload.get("target_concepts") or observation.goal.target_concepts),
+        target_concepts=target_concepts,
         rationale=str(payload.get("rationale") or payload.get("reasoning_summary") or ""),
         plan_update=str(payload.get("plan_update", "")),
         payload=dict(payload.get("payload") or payload),
     )
+
+
+def _resource_by_id(observation: Observation, resource_id: Any):
+    if not resource_id:
+        return None
+    return next((resource for resource in observation.candidate_resources if resource.resource_id == resource_id), None)
 
 
 def _public_llm_settings() -> dict[str, str]:
