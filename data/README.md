@@ -32,13 +32,19 @@ tasks/
   track3_kt_simulator/
 ```
 
-Current local build:
+Prepared versions:
 
-| Track | Task file | Tasks |
-| --- | --- | ---: |
-| `track1_text_math` | `tasks/track1_text_math/tasks.jsonl` | 10000 |
-| `track2_mooc_planning` | `tasks/track2_mooc_planning/tasks.jsonl` | 10000 |
-| `track3_kt_simulator` | `tasks/track3_kt_simulator/tasks.jsonl` | 10000 |
+| Version | Build command | Notes |
+| --- | --- | --- |
+| `10k` | `build-tasks --track all --limit 10000` | Track 1/2/3 each have 10000 task instances. |
+| `35k` | `build-tasks --track all --limit 35000` | Track 1 has 35000, Track 2 has 35000, Track 3 has 33397 XES3G5M-derived task instances. |
+
+Version counts:
+
+| Version | Track 1 | Track 2 | Track 3 |
+| --- | ---: | ---: | ---: |
+| `10k` | 10000 | 10000 | 10000 |
+| `35k` | 35000 | 35000 | 33397 |
 
 ## Use In EduPlanBench
 
@@ -47,8 +53,11 @@ From the EduPlanBench repository root:
 ```bash
 python3 scripts/download_prepared_data_from_hf.py \
   --repo-id erwinmsmith/EduPlanBench-data \
+  --version 10k \
   --data-dir data
 ```
+
+Use `--version 35k` to download the larger prepared task bank.
 
 Then run experiments directly:
 

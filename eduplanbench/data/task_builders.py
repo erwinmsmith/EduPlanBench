@@ -191,7 +191,7 @@ def _build_track2(root: Path, *, limit: int) -> Iterator[TaskInstance]:
         task_type = _track2_task_type(idx)
         prereqs = graph.prerequisites_of(concept.node_id)
         graph_concepts = prereqs[:4] + [concept.node_id]
-        resources = graph.resources_for_concepts(graph_concepts, limit=30)
+        resources = graph.resources_for_concepts(graph_concepts, limit=30, text_fallback=False)
         pool = [
             Resource(
                 resource_id=node.node_id,

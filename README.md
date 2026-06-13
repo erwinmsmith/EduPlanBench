@@ -118,7 +118,16 @@ EDUPLAN_EXTERNAL_BRIDGE_USE_LLM=0      # deterministic bridge fallback, useful f
 
 ## Prepared Data From Hugging Face
 
-The fastest server setup is to download the already prepared `data/` artifact. The current local build contains `10000` task instances for each track:
+The fastest server setup is to download an already prepared `data/` artifact. Prepared versions are stored in one Hugging Face dataset repo under `versions/<version>/`.
+
+Available prepared-data versions:
+
+| Version | Build command | Notes |
+| --- | --- | --- |
+| `10k` | `build-tasks --track all --limit 10000` | Track 1/2/3 each have 10000 task instances. |
+| `35k` | `build-tasks --track all --limit 35000` | Track 1 has 35000, Track 2 has 35000, Track 3 has 33397 XES3G5M-derived task instances. |
+
+Each version contains:
 
 ```text
 data/tasks/track1_text_math/tasks.jsonl
@@ -133,8 +142,11 @@ export EDUPLAN_HF_DATASET_REPO=<hf-namespace>/EduPlanBench-data
 
 python3 scripts/download_prepared_data_from_hf.py \
   --repo-id "$EDUPLAN_HF_DATASET_REPO" \
+  --version 10k \
   --data-dir data
 ```
+
+Use `--version 35k` for the larger prepared task bank.
 
 Then run experiments directly; no raw dataset rebuild is needed:
 
@@ -155,6 +167,7 @@ hf auth login
 
 python3 scripts/upload_prepared_data_to_hf.py \
   --repo-id <hf-namespace>/EduPlanBench-data \
+  --version 10k \
   --data-dir data
 ```
 

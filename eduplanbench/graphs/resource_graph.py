@@ -31,17 +31,36 @@ class GraphEdge:
 class TextResourceGraph:
     nodes: dict[str, GraphNode] = field(default_factory=dict)
     edges: list[GraphEdge] = field(default_factory=list)
+    _resource_index: dict[str, list[GraphNode]] | None = field(default=None, init=False, repr=False)
+    _prereq_index: dict[str, list[str]] | None = field(default=None, init=False, repr=False)
 
     def add_node(self, node: GraphNode) -> None:
         self.nodes[node.node_id] = node
+        self._resource_index = None
 
     def add_edge(self, source: str, target: str, edge_type: str, *, weight: float = 1.0) -> None:
         if source and target:
             self.edges.append(GraphEdge(source=source, target=target, type=edge_type, weight=weight))
+            if edge_type == "prerequisite":
+                self._prereq_index = None
 
-    def resources_for_concepts(self, concepts: list[str], *, limit: int = 20) -> list[GraphNode]:
-        wanted = set(concepts)
+    def resources_for_concepts(self, concepts: list[str], *, limit: int = 20, text_fallback: bool = True) -> list[GraphNode]:
+        index = self._ensure_resource_index()
         matches: list[GraphNode] = []
+        seen: set[str] = set()
+        for concept in concepts:
+            for node in index.get(concept, []):
+                if node.node_id in seen:
+                    continue
+                seen.add(node.node_id)
+                matches.append(node)
+                if len(matches) >= limit:
+                    return matches
+        if matches:
+            return matches
+        if not text_fallback:
+            return matches
+        wanted = set(concepts)
         for node in self.nodes.values():
             if node.type == "concept":
                 continue
@@ -52,7 +71,27 @@ class TextResourceGraph:
         return matches
 
     def prerequisites_of(self, concept: str) -> list[str]:
-        return [edge.source for edge in self.edges if edge.type == "prerequisite" and edge.target == concept]
+        return list(self._ensure_prereq_index().get(concept, []))
+
+    def _ensure_resource_index(self) -> dict[str, list[GraphNode]]:
+        if self._resource_index is None:
+            index: dict[str, list[GraphNode]] = {}
+            for node in self.nodes.values():
+                if node.type == "concept":
+                    continue
+                for concept in node.concepts:
+                    index.setdefault(concept, []).append(node)
+            self._resource_index = index
+        return self._resource_index
+
+    def _ensure_prereq_index(self) -> dict[str, list[str]]:
+        if self._prereq_index is None:
+            index: dict[str, list[str]] = {}
+            for edge in self.edges:
+                if edge.type == "prerequisite":
+                    index.setdefault(edge.target, []).append(edge.source)
+            self._prereq_index = index
+        return self._prereq_index
 
     def to_json(self, path: str | Path) -> None:
         write_json(
