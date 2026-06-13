@@ -66,6 +66,11 @@ def require_prepared_data(data_dir: Path) -> None:
         )
 
 
+def normalize_path_in_repo(path: str) -> str:
+    normalized = path.strip().strip("/")
+    return "." if normalized in {"", "."} else normalized
+
+
 def main() -> None:
     args = parse_args()
     if not args.repo_id:
@@ -75,7 +80,7 @@ def main() -> None:
     if not data_dir.exists():
         raise SystemExit(f"data directory does not exist: {data_dir}")
     require_prepared_data(data_dir)
-    path_in_repo = args.path_in_repo or f"versions/{args.version.strip('/')}"
+    path_in_repo = normalize_path_in_repo(args.path_in_repo or f"versions/{args.version.strip('/')}")
 
     api = HfApi()
     api.create_repo(

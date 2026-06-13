@@ -118,7 +118,12 @@ EDUPLAN_EXTERNAL_BRIDGE_USE_LLM=0      # deterministic bridge fallback, useful f
 
 ## Prepared Data From Hugging Face
 
-The fastest server setup is to download an already prepared `data/` artifact. Prepared versions are stored in one Hugging Face dataset repo under `versions/<version>/`.
+The fastest server setup is to download an already prepared `data/` artifact from [erwinmsmith/EduPlanBench-data](https://huggingface.co/datasets/erwinmsmith/EduPlanBench-data).
+
+Prepared data is exposed in two ways:
+
+- Hugging Face UI revisions: switch the branch/revision dropdown to `10k` or `35k` on the dataset's "Files and versions" page.
+- Stable directories on `main`: `versions/10k/` and `versions/35k/`, which is what the download script uses by default.
 
 Available prepared-data versions:
 
@@ -138,7 +143,7 @@ data/tasks/track3_kt_simulator/tasks.jsonl
 After the Hugging Face dataset repo is published, set its repo id and download it into the repository root:
 
 ```bash
-export EDUPLAN_HF_DATASET_REPO=<hf-namespace>/EduPlanBench-data
+export EDUPLAN_HF_DATASET_REPO=erwinmsmith/EduPlanBench-data
 
 python3 scripts/download_prepared_data_from_hf.py \
   --repo-id "$EDUPLAN_HF_DATASET_REPO" \
@@ -147,6 +152,16 @@ python3 scripts/download_prepared_data_from_hf.py \
 ```
 
 Use `--version 35k` for the larger prepared task bank.
+
+You can also download directly from the Hugging Face branch/revision root:
+
+```bash
+python3 scripts/download_prepared_data_from_hf.py \
+  --repo-id erwinmsmith/EduPlanBench-data \
+  --revision 35k \
+  --path-in-repo . \
+  --data-dir data
+```
 
 Then run experiments directly; no raw dataset rebuild is needed:
 
@@ -166,7 +181,7 @@ To publish the local prepared data to Hugging Face, log in first and upload `dat
 hf auth login
 
 python3 scripts/upload_prepared_data_to_hf.py \
-  --repo-id <hf-namespace>/EduPlanBench-data \
+  --repo-id erwinmsmith/EduPlanBench-data \
   --version 10k \
   --data-dir data
 ```

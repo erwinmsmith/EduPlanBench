@@ -8,6 +8,11 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 
+def normalize_path_in_repo(path: str) -> str:
+    normalized = path.strip().strip("/")
+    return "." if normalized in {"", "."} else normalized
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Download prepared EduPlanBench data from a Hugging Face dataset repo into data/.",
@@ -40,17 +45,25 @@ def main() -> None:
 
     data_dir = Path(args.data_dir).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
-    path_in_repo = args.path_in_repo or f"versions/{args.version.strip('/')}"
+    path_in_repo = normalize_path_in_repo(args.path_in_repo or f"versions/{args.version.strip('/')}")
+    if path_in_repo == ".":
+        allow_patterns = [
+            "README.md",
+            "processed/**",
+            "tasks/**",
+        ]
+    else:
+        allow_patterns = [
+            f"{path_in_repo}/README.md",
+            f"{path_in_repo}/processed/**",
+            f"{path_in_repo}/tasks/**",
+        ]
     snapshot_download(
         repo_id=args.repo_id,
         repo_type="dataset",
         revision=args.revision,
         local_dir=str(data_dir),
-        allow_patterns=[
-            f"{path_in_repo}/README.md",
-            f"{path_in_repo}/processed/**",
-            f"{path_in_repo}/tasks/**",
-        ],
+        allow_patterns=allow_patterns,
         ignore_patterns=[
             "**/.DS_Store",
             "**/__MACOSX/**",
@@ -59,7 +72,7 @@ def main() -> None:
         ],
     )
     nested = data_dir / path_in_repo
-    if nested.exists():
+    if path_in_repo != "." and nested.exists():
         for child in nested.iterdir():
             target = data_dir / child.name
             if target.exists():

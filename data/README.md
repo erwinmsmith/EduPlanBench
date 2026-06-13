@@ -19,6 +19,11 @@ license: other
 
 This artifact contains the prepared EduPlanBench data used by the benchmark code. It is intended to be downloaded into the repository's `data/` directory so experiments can run without rebuilding from raw datasets.
 
+Prepared data is available in two access patterns:
+
+- Use the Hugging Face branch/revision dropdown to switch between `10k` and `35k`.
+- Stay on `main` and download from `versions/10k/` or `versions/35k/`.
+
 ## Contents
 
 ```text
@@ -58,6 +63,16 @@ python3 scripts/download_prepared_data_from_hf.py \
 ```
 
 Use `--version 35k` to download the larger prepared task bank.
+
+To download from a Hugging Face branch/revision root instead:
+
+```bash
+python3 scripts/download_prepared_data_from_hf.py \
+  --repo-id erwinmsmith/EduPlanBench-data \
+  --revision 35k \
+  --path-in-repo . \
+  --data-dir data
+```
 
 Then run experiments directly:
 
