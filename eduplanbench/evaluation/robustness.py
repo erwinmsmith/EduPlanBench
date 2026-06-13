@@ -54,7 +54,9 @@ def run_robustness(
                 metrics = [_metrics_for_trace(trace) for trace in traces]
                 row[f"H={horizon} GSR ↑"] = _avg(metrics, "gsr")
                 row[f"H={horizon} PR ↑"] = _avg(metrics, "pr")
-            rows.append(row)
+                _write_progress(out_dir, rows, row)
+            if row not in rows:
+                rows.append(row)
             write_json(out_dir / "robustness_table.json", rows)
     write_json(
         out_dir / "config.snapshot.json",
@@ -72,6 +74,13 @@ def run_robustness(
     )
     write_json(out_dir / "robustness_table.json", rows)
     return rows
+
+
+def _write_progress(out_dir: Path, rows: list[dict[str, Any]], row: dict[str, Any]) -> None:
+    progress_rows = [*rows]
+    if row not in progress_rows:
+        progress_rows.append(row)
+    write_json(out_dir / "robustness_table.json", progress_rows)
 
 
 def _load_existing_traces(path: Path, *, expected: int) -> list[EpisodeTrace] | None:
