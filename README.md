@@ -105,6 +105,13 @@ OPENAI_MODEL
 
 This lets third-party agents that use OpenAI-compatible clients share one `.env` file. HTTP external agents should load the same `.env` in their own server process; API keys are not sent in HTTP request bodies. `.env` is ignored and should not be committed.
 
+The default external bridge uses agent-specific EduPlanBench prompts when an LLM key is available. Control this with:
+
+```bash
+EDUPLAN_EXTERNAL_BRIDGE_USE_LLM=auto   # default: use LLM when a key exists
+EDUPLAN_EXTERNAL_BRIDGE_USE_LLM=0      # deterministic bridge fallback, useful for smoke tests
+```
+
 ## Data Preparation
 
 Expected raw data roots:
@@ -246,7 +253,7 @@ Check availability:
 python3 -m eduplanbench agents list
 ```
 
-The five registered agents are enabled through `scripts/external_agent_bridge.py`, a persistent EduPlanBench JSONL bridge that maps benchmark observations into each agent system's planning style and returns strict EduPlanBench `Action` JSON. See [docs/external_agents.md](docs/external_agents.md).
+The five registered agents are enabled through `scripts/external_agent_bridge.py`, a persistent EduPlanBench JSONL bridge that maps benchmark observations into each agent system's planning style, uses agent-specific prompts when an LLM key is available, and returns strict EduPlanBench `Action` JSON. See [docs/external_agents.md](docs/external_agents.md).
 
 To evaluate an external agent:
 

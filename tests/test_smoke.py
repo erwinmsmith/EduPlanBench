@@ -118,7 +118,8 @@ def test_external_agent_registry_is_available() -> None:
     assert {"llm_pddl", "lats", "plan_and_act", "reactree", "hiagent"}.issubset(names)
 
 
-def test_enabled_external_agent_can_act() -> None:
+def test_enabled_external_agent_can_act(monkeypatch) -> None:
+    monkeypatch.setenv("EDUPLAN_EXTERNAL_BRIDGE_USE_LLM", "0")
     task = make_task()
     env = EduPlanEnv(task, seed=1)
     agent = create_agent("external:lats")

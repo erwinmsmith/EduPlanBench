@@ -11,6 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from eduplanbench.core.env import get_llm_settings
+from eduplanbench.core.schema import Action
+from eduplanbench.llm.openai_compatible import OpenAICompatibleClient
+
 
 RESOURCE_ACTIONS = {
     "recommend_exercise",
@@ -49,6 +53,7 @@ class EduPlanBridge:
     def __init__(self, agent: str) -> None:
         self.agent = normalize_agent(agent)
         self.task: dict[str, Any] | None = None
+        self.client: OpenAICompatibleClient | None = None
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         event = request.get("event")
@@ -61,6 +66,13 @@ class EduPlanBridge:
             return {}
         observation = request["observation"]
         task = request.get("task") or self.task or {}
+        fallback = self._fallback_action(task, observation)
+        llm_action = self._llm_action(task, observation, fallback)
+        if llm_action is not None:
+            return llm_action
+        return fallback
+
+    def _fallback_action(self, task: dict[str, Any], observation: dict[str, Any]) -> dict[str, Any]:
         if self.agent == "llm_pddl":
             return llm_pddl_action(task, observation)
         if self.agent == "lats":
@@ -72,6 +84,27 @@ class EduPlanBridge:
         if self.agent == "hiagent":
             return hiagent_action(task, observation)
         return lats_action(task, observation)
+
+    def _llm_action(self, task: dict[str, Any], observation: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any] | None:
+        settings = get_llm_settings()
+        mode = os.environ.get("EDUPLAN_EXTERNAL_BRIDGE_USE_LLM", "auto").lower()
+        if mode in {"0", "false", "no", "off", "never"}:
+            mark_fallback(fallback, self.agent, "llm_disabled")
+            return None
+        if not settings["api_key"]:
+            mark_fallback(fallback, self.agent, "missing_api_key")
+            return None
+        try:
+            if self.client is None:
+                self.client = OpenAICompatibleClient.from_env()
+                self.client.timeout = int(os.environ.get("EDUPLAN_EXTERNAL_BRIDGE_TIMEOUT", "60"))
+                self.client.max_retries = int(os.environ.get("EDUPLAN_EXTERNAL_BRIDGE_RETRIES", "1"))
+            prompt = build_agent_prompt(self.agent, task, observation, fallback)
+            payload = self.client.complete_json(prompt)
+            return normalize_llm_action(payload, observation, fallback, self.agent)
+        except Exception as exc:
+            mark_fallback(fallback, self.agent, f"llm_error:{exc}")
+            return None
 
 
 def llm_pddl_action(task: dict[str, Any], observation: dict[str, Any]) -> dict[str, Any]:
@@ -214,6 +247,178 @@ def action(action_type: str, concepts: list[str], rationale: str, *, plan_update
         "plan_update": plan_update,
         "payload": payload or {},
     }
+
+
+def build_agent_prompt(agent: str, task: dict[str, Any], observation: dict[str, Any], fallback: dict[str, Any]) -> str:
+    family = prompt_family(agent)
+    context = compact_context(task, observation, fallback)
+    return (
+        f"{family['role']}\n\n"
+        "You are controlling an EduPlanBench learning-planning episode. "
+        "The task is long-horizon: you must use learner feedback, visible mastery, dynamic events, and candidate resources to choose the next step. "
+        "Do not solve the math problem for the learner unless the action is an explanation/review and the hint remains pedagogically appropriate.\n\n"
+        f"{family['method']}\n\n"
+        "Return exactly one strict JSON object with this schema:\n"
+        "{\n"
+        '  "action_type": "one of recommend_exercise, recommend_explanation, recommend_review, diagnostic_quiz, update_plan, diagnose_misconception, wait_or_reduce_load, recommend_easier_problem, recommend_similar_problem, summarize_knowledge",\n'
+        '  "resource_id": "required for resource recommendation actions; must be one of candidate_resources[].resource_id, otherwise null",\n'
+        '  "target_concepts": ["concept ids/names"],\n'
+        '  "rationale": "one concise sentence grounded in observation/feedback/resources",\n'
+        '  "plan_update": "non-empty only when action_type is update_plan or when replanning is necessary",\n'
+        '  "payload": {"prompt_family": "...", "diagnosis": "... optional", "expected_effect": "... optional"}\n'
+        "}\n\n"
+        "Legality constraints:\n"
+        "- If action_type recommends a resource, choose an existing resource_id from candidate_resources only.\n"
+        "- Never output null resource_id for recommend_exercise/recommend_explanation/recommend_review/recommend_easier_problem/recommend_similar_problem.\n"
+        "- If recent feedback shows incorrect/forgotten/overload, prefer diagnostic, review, easier problem, or replan over harder practice.\n"
+        "- If a resource is unavailable or time budget changed, update the plan or select an alternative resource.\n"
+        "- Keep the rationale short; do not include hidden chain-of-thought.\n\n"
+        f"EduPlanBench context JSON:\n{json.dumps(context, ensure_ascii=False)}"
+    )
+
+
+def prompt_family(agent: str) -> dict[str, str]:
+    if agent == "llm_pddl":
+        return {
+            "role": "Prompt family: LLM+P for EduPlanBench.",
+            "method": (
+                "Represent the learner state as symbolic facts and choose the next applicable planning operator. "
+                "Use operators such as diagnose_state, repair_misconception, review_prerequisite, explain_target, practice_target, retention_review, and replan_after_event. "
+                "Prefer update_plan when no valid operator sequence exists for the current dynamic constraints."
+            ),
+        }
+    if agent == "lats":
+        return {
+            "role": "Prompt family: LATS for EduPlanBench.",
+            "method": (
+                "Mentally expand a small tree of candidate actions, estimate value by expected mastery gain, risk, validity, and long-horizon progress, then return only the best action. "
+                "Do not output the search tree; summarize only the selected action rationale."
+            ),
+        }
+    if agent == "plan_and_act":
+        return {
+            "role": "Prompt family: Plan-and-Act for EduPlanBench.",
+            "method": (
+                "Separate high-level planning from execution. If the plan is missing, stale, or contradicted by feedback/events, output update_plan. "
+                "Otherwise act as the executor and choose the next resource/action aligned with the current plan."
+            ),
+        }
+    if agent == "reactree":
+        return {
+            "role": "Prompt family: ReAcTree for EduPlanBench.",
+            "method": (
+                "Decompose the goal into a hierarchical control tree: root sequence, diagnostic child, remediation fallback, target-practice child, retention child. "
+                "Choose the active node based on feedback; use fallback nodes after errors or overload."
+            ),
+        }
+    if agent == "hiagent":
+        return {
+            "role": "Prompt family: HiAgent for EduPlanBench.",
+            "method": (
+                "Maintain hierarchical working memory: goal memory, weak-concept memory, recent-feedback memory, resource memory, and constraint memory. "
+                "Choose actions that update or use memory to avoid repeating failures and adapt under long-horizon perturbations. "
+                "If observation.step is 0, initialize working memory with action_type update_plan and do not recommend a resource yet."
+            ),
+        }
+    return {
+        "role": "Prompt family: generic external planner for EduPlanBench.",
+        "method": "Choose the next action that maximizes long-horizon learning progress while respecting resource and action constraints.",
+    }
+
+
+def compact_context(task: dict[str, Any], observation: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+    resources = []
+    for resource in observation.get("candidate_resources", [])[:15]:
+        resources.append(
+            {
+                "resource_id": resource.get("resource_id"),
+                "type": resource.get("type"),
+                "title": clip(str(resource.get("title", "")), 120),
+                "concepts": list(resource.get("concepts") or []),
+                "difficulty": resource.get("difficulty", 0.5),
+                "text": clip(str(resource.get("text", "")), 260),
+            }
+        )
+    return {
+        "task": {
+            "task_id": task.get("task_id") or observation.get("task_id"),
+            "track": task.get("track") or observation.get("metadata", {}).get("track"),
+            "domain": task.get("domain"),
+            "horizon": task.get("horizon"),
+            "constraints": task.get("constraints", {}),
+            "metadata": {
+                "task_type": task.get("metadata", {}).get("task_type"),
+                "difficulty": task.get("metadata", {}).get("difficulty"),
+                "misconception": task.get("metadata", {}).get("misconception"),
+            },
+        },
+        "observation": {
+            "step": observation.get("step"),
+            "goal": observation.get("goal", {}),
+            "learner_summary": clip(str(observation.get("learner_summary", "")), 500),
+            "estimated_mastery": observation.get("estimated_mastery", {}),
+            "recent_feedback": [clip(str(item), 220) for item in observation.get("recent_feedback", [])[-5:]],
+            "available_actions": observation.get("available_actions", []),
+            "current_plan": clip(str(observation.get("current_plan", "")), 600),
+            "metadata": {
+                "active_horizon": observation.get("metadata", {}).get("active_horizon"),
+                "dynamic_events": observation.get("metadata", {}).get("dynamic_events", [])[-5:],
+                "unavailable_resources": observation.get("metadata", {}).get("unavailable_resources", []),
+                "prerequisites": observation.get("metadata", {}).get("prerequisites", []),
+            },
+            "candidate_resources": resources,
+        },
+        "deterministic_fallback_action": fallback,
+    }
+
+
+def normalize_llm_action(payload: dict[str, Any], observation: dict[str, Any], fallback: dict[str, Any], agent: str) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        mark_fallback(fallback, agent, "llm_non_object")
+        return fallback
+    candidate_ids = {resource.get("resource_id") for resource in observation.get("candidate_resources", [])}
+    action_type = str(payload.get("action_type") or fallback.get("action_type") or "diagnostic_quiz")
+    if action_type not in Action.VALID_ACTIONS:
+        mark_fallback(fallback, agent, f"llm_invalid_action_type:{action_type}")
+        return fallback
+    resource_id = payload.get("resource_id")
+    repaired_resource = False
+    if action_type in RESOURCE_ACTIONS and resource_id not in candidate_ids:
+        fallback_resource_id = fallback.get("resource_id")
+        if fallback.get("action_type") in RESOURCE_ACTIONS and fallback_resource_id in candidate_ids:
+            resource_id = fallback_resource_id
+            repaired_resource = True
+        else:
+            mark_fallback(fallback, agent, f"llm_invalid_resource:{resource_id}")
+            return fallback
+    result = {
+        "action_type": action_type,
+        "resource_id": resource_id if resource_id else None,
+        "target_concepts": list(payload.get("target_concepts") or fallback.get("target_concepts") or target_concepts(observation)),
+        "rationale": str(payload.get("rationale") or fallback.get("rationale") or ""),
+        "plan_update": str(payload.get("plan_update") or ""),
+        "payload": dict(payload.get("payload") or {}),
+    }
+    result["payload"].setdefault("bridge_strategy", agent)
+    result["payload"]["prompt_family"] = agent
+    result["payload"]["llm_used"] = True
+    if repaired_resource:
+        result["payload"]["llm_resource_repaired"] = True
+    return result
+
+
+def mark_fallback(action_payload: dict[str, Any], agent: str, reason: str) -> None:
+    payload = action_payload.setdefault("payload", {})
+    payload.setdefault("bridge_strategy", agent)
+    payload.setdefault("prompt_family", agent)
+    payload["llm_used"] = False
+    payload["fallback_reason"] = reason
+
+
+def clip(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
 
 
 def resource_action(action_type: str, resource: dict[str, Any], rationale: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -8,7 +8,7 @@ The five registered repositories target different native environments, such as P
 scripts/external_agent_bridge.py
 ```
 
-This bridge makes the agents usable inside EduPlanBench by mapping EduPlanBench observations into each system's planning style. It does not launch the original repositories' native benchmark environments. If you want to run a repo's native runtime directly, replace the command in `configs/external_agents.json` with your own bridge.
+This bridge makes the agents usable inside EduPlanBench by mapping EduPlanBench observations into each system's planning style and, when an LLM key is available, using agent-specific prompts to produce the next EduPlanBench action. It does not launch the original repositories' native benchmark environments. If you want to run a repo's native runtime directly, replace the command in `configs/external_agents.json` with your own bridge.
 
 ## Cloned Repositories
 
@@ -79,6 +79,34 @@ The JSON request also includes non-secret LLM config:
 ```
 
 For `http_json` bridges, start the external server with the same `.env`. EduPlanBench does not send API keys in HTTP request bodies.
+
+The default external bridge has two modes:
+
+```bash
+EDUPLAN_EXTERNAL_BRIDGE_USE_LLM=auto
+```
+
+Uses the configured LLM when a key exists, otherwise falls back to deterministic bridge logic.
+
+```bash
+EDUPLAN_EXTERNAL_BRIDGE_USE_LLM=0
+```
+
+Disables LLM calls and uses deterministic bridge logic. This is useful for fast smoke tests and CI.
+
+## Agent-Specific Prompts
+
+`scripts/external_agent_bridge.py` defines one prompt family per registered agent:
+
+```text
+llm_pddl       symbolic facts/operators, PDDL-style planning and replanning
+lats           candidate expansion, rollout-style scoring, best-action selection
+plan_and_act   high-level plan first, executor action second, replan on contradiction
+reactree       hierarchical root/child/fallback control-tree selection
+hiagent        hierarchical working-memory update and memory-conditioned action
+```
+
+Every prompt receives the same compact EduPlanBench context: track/task metadata, goal, learner summary, visible mastery, recent feedback, dynamic events, current plan, available actions, and candidate resource ids. Prompts must return one strict EduPlanBench `Action` JSON object.
 
 ## Bridge Protocol
 
