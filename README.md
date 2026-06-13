@@ -109,6 +109,8 @@ OPENAI_MODEL
 
 This lets third-party agents that use OpenAI-compatible clients share one `.env` file. HTTP external agents should load the same `.env` in their own server process; API keys are not sent in HTTP request bodies. `.env` is ignored and should not be committed.
 
+Built-in LLM planners and registered external agents share the same EduPlanBench bridge policy in `eduplanbench/agents/bridge_policy.py`: identical compact observation context, JSON action schema, track-specific planning rules, action-history constraints, and policy repair. The only intended difference is the planner family prompt/fallback bias, such as ReAct, one-shot, LATS, or LLM+P.
+
 The default external bridge uses agent-specific EduPlanBench prompts when an LLM key is available. Control this with:
 
 ```bash
@@ -331,7 +333,7 @@ Check availability:
 python3 -m eduplanbench agents list
 ```
 
-The five registered agents are enabled through `scripts/external_agent_bridge.py`, a persistent EduPlanBench JSONL bridge that maps benchmark observations into each agent system's planning style, uses agent-specific prompts when an LLM key is available, and returns strict EduPlanBench `Action` JSON. See [docs/external_agents.md](docs/external_agents.md).
+The five registered agents are enabled through `scripts/external_agent_bridge.py`, a persistent EduPlanBench JSONL bridge that delegates prompt construction, fallback actions, normalization, and policy repair to the same `eduplanbench/agents/bridge_policy.py` module used by built-in LLM planners. This keeps built-in and external systems on one evaluation level. See [docs/external_agents.md](docs/external_agents.md).
 
 To evaluate an external agent:
 

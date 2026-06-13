@@ -6,7 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from eduplanbench.core.schema import Action, Observation, Resource, TaskInstance
+from eduplanbench.agents import bridge_policy
+from eduplanbench.core.schema import Action, Observation, Resource, TaskInstance, to_plain
 from eduplanbench.llm.openai_compatible import OpenAICompatibleClient
 
 
@@ -88,6 +89,7 @@ class ToolState:
     learner_memory: list[str] = field(default_factory=list)
     reflections: list[str] = field(default_factory=list)
     plan: str = ""
+    action_history: list[dict[str, Any]] = field(default_factory=list)
 
 
 class LLMPlannerAgent(Agent):
@@ -103,9 +105,21 @@ class LLMPlannerAgent(Agent):
 
     def act(self, observation: Observation) -> Action:
         self._update_tools(observation)
-        prompt = self._prompt(observation)
+        task_dict = to_plain(self.task)
+        observation_dict = to_plain(observation)
+        fallback = bridge_policy.fallback_action(self.system_name, task_dict, observation_dict)
+        prompt = bridge_policy.build_agent_prompt(self.system_name, task_dict, observation_dict, fallback, self.state.action_history)
         payload = self.client.complete_json(prompt)
-        action = self._action_from_payload(payload, observation)
+        action_payload = bridge_policy.normalize_llm_action(payload, observation_dict, fallback, self.system_name)
+        action_payload = bridge_policy.enforce_bridge_policy(
+            action_payload,
+            task_dict,
+            observation_dict,
+            fallback,
+            self.state.action_history,
+            self.system_name,
+        )
+        action = self._action_from_payload(action_payload, observation)
         valid, _ = action.validate_for(observation.candidate_resources)
         if not valid and observation.candidate_resources and action.action_type not in {"diagnostic_quiz", "update_plan", "diagnose_misconception", "wait_or_reduce_load"}:
             resource = observation.candidate_resources[0]
@@ -114,6 +128,15 @@ class LLMPlannerAgent(Agent):
             action.payload["fallback_normalized"] = True
         if action.plan_update:
             self.state.plan = action.plan_update
+        self.state.action_history.append(
+            {
+                "step": observation.step,
+                "action_type": action.action_type,
+                "resource_id": action.resource_id,
+                "target_concepts": action.target_concepts,
+            }
+        )
+        self.state.action_history = self.state.action_history[-20:]
         return action
 
     def _update_tools(self, observation: Observation) -> None:
@@ -196,15 +219,6 @@ class OneShotPlannerAgent(LLMPlannerAgent):
     system_name = "one_shot"
 
     def act(self, observation: Observation) -> Action:
-        if self.state.plan and observation.candidate_resources:
-            resource = observation.candidate_resources[min(observation.step - 1, len(observation.candidate_resources) - 1)]
-            return Action(
-                action_type="recommend_exercise" if resource.type == "exercise" else "recommend_explanation",
-                resource_id=resource.resource_id,
-                target_concepts=resource.concepts,
-                rationale="Follow the fixed one-shot plan without reading new feedback.",
-                plan_update=self.state.plan,
-            )
         return super().act(observation)
 
     def _prompt(self, observation: Observation) -> str:

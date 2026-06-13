@@ -10,6 +10,14 @@ scripts/external_agent_bridge.py
 
 This bridge makes the agents usable inside EduPlanBench by mapping EduPlanBench observations into each system's planning style and, when an LLM key is available, using agent-specific prompts to produce the next EduPlanBench action. It does not launch the original repositories' native benchmark environments. If you want to run a repo's native runtime directly, replace the command in `configs/external_agents.json` with your own bridge.
 
+Built-in LLM planners and the default external bridge share one policy module:
+
+```text
+eduplanbench/agents/bridge_policy.py
+```
+
+That module owns compact context construction, prompt-family selection, fallback actions, JSON normalization, track-specific rules, action-history constraints, and policy repair. This is the fairness boundary for benchmark experiments: ReAct, One-shot, Step-by-step, CoT, LLM+P, LATS, Plan-and-Act, ReAcTree, and HiAgent receive the same observation fields and are repaired by the same schema and track policy. Only the planner-family prompt and fallback bias differ.
+
 ## Cloned Repositories
 
 Use:
@@ -96,9 +104,13 @@ Disables LLM calls and uses deterministic bridge logic. This is useful for fast 
 
 ## Agent-Specific Prompts
 
-`scripts/external_agent_bridge.py` defines one prompt family per registered agent:
+`eduplanbench/agents/bridge_policy.py` defines one prompt family per built-in or registered external agent:
 
 ```text
+react          thought/action feedback loop over the shared observation
+one_shot       fixed initial plan with limited feedback adaptation
+step_by_step   local next-step optimization under the shared policy
+cot            deliberate concise reasoning followed by one action
 llm_pddl       symbolic facts/operators, PDDL-style planning and replanning
 lats           candidate expansion, rollout-style scoring, best-action selection
 plan_and_act   high-level plan first, executor action second, replan on contradiction
@@ -243,7 +255,7 @@ Add one entry to `configs/external_agents.json`:
 }
 ```
 
-Then implement a bridge that returns EduPlanBench `Action` JSON.
+Then implement a bridge that returns EduPlanBench `Action` JSON. For most new LLM-style systems, prefer adding a new prompt family and fallback in `eduplanbench/agents/bridge_policy.py` and keeping the runtime bridge as a thin transport wrapper. That keeps the new system comparable with the existing built-in and external agents.
 
 ## Evaluation Recipe
 
