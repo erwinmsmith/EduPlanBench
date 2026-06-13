@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 
 def main() -> None:
     request = json.loads(sys.stdin.read())
+    # EduPlanBench forwards one unified OpenAI-compatible LLM config to stdio
+    # bridges. Third-party clients can read these without benchmark-specific code.
+    llm_config = {
+        "api_key": os.environ.get("EDUPLAN_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY"),
+        "base_url": os.environ.get("EDUPLAN_LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
+        "model": os.environ.get("EDUPLAN_LLM_MODEL") or os.environ.get("OPENAI_MODEL"),
+    }
     event = request.get("event")
     if event in {"reset", "reflect"}:
         print("{}")
@@ -25,14 +33,14 @@ def main() -> None:
             "resource_id": resource["resource_id"],
             "target_concepts": resource.get("concepts", observation["goal"]["target_concepts"]),
             "rationale": "Bridge template fallback action. Replace with the external agent decision.",
-            "payload": {"bridge_template": True},
+            "payload": {"bridge_template": True, "llm_model": llm_config["model"]},
         }
     else:
         action = {
             "action_type": "diagnostic_quiz",
             "target_concepts": observation["goal"]["target_concepts"],
             "rationale": "Bridge template fallback action. Replace with the external agent decision.",
-            "payload": {"bridge_template": True},
+            "payload": {"bridge_template": True, "llm_model": llm_config["model"]},
         }
     print(json.dumps(action, ensure_ascii=False))
 

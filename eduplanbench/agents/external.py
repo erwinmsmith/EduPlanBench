@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from eduplanbench.core.env import build_external_llm_env, get_llm_settings
 from eduplanbench.core.schema import Action, Observation, TaskInstance, to_plain
 
 
@@ -108,12 +109,13 @@ class ExternalAgentAdapter:
 
     def reset(self, task: TaskInstance) -> None:
         self.task = task
-        self._send({"event": "reset", "task": to_plain(task)}, required=False)
+        self._send({"event": "reset", "agent": self.name, "llm": _public_llm_settings(), "task": to_plain(task)}, required=False)
 
     def act(self, observation: Observation) -> Action:
         request = {
             "event": "act",
             "agent": self.name,
+            "llm": _public_llm_settings(),
             "task": to_plain(self.task) if self.task else None,
             "observation": to_plain(observation),
             "action_schema": {
@@ -137,7 +139,7 @@ class ExternalAgentAdapter:
         return action
 
     def reflect(self, trace) -> str:
-        payload = self._send({"event": "reflect", "trace": to_plain(trace)}, required=False)
+        payload = self._send({"event": "reflect", "agent": self.name, "llm": _public_llm_settings(), "trace": to_plain(trace)}, required=False)
         return str(payload.get("reflection", "")) if payload else ""
 
     def _send(self, request: dict[str, Any], *, required: bool) -> dict[str, Any]:
@@ -152,7 +154,7 @@ class ExternalAgentAdapter:
             if required:
                 raise RuntimeError(f"external agent '{self.name}' has no command configured")
             return {}
-        env = os.environ.copy()
+        env = build_external_llm_env(os.environ.copy())
         env["EDUPLAN_EXTERNAL_AGENT_NAME"] = self.name
         env["EDUPLAN_EXTERNAL_REPO_PATH"] = str(self.spec.repo_path)
         completed = subprocess.run(
@@ -202,6 +204,15 @@ def _action_from_payload(payload: dict[str, Any], observation: Observation) -> A
         plan_update=str(payload.get("plan_update", "")),
         payload=dict(payload.get("payload") or payload),
     )
+
+
+def _public_llm_settings() -> dict[str, str]:
+    settings = get_llm_settings()
+    return {
+        "provider": settings["provider"],
+        "base_url": settings["base_url"],
+        "model": settings["model"],
+    }
 
 
 def _normalize_external_name(name: str) -> str:

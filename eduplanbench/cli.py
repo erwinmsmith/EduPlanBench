@@ -76,6 +76,7 @@ def main(argv: list[str] | None = None) -> None:
     robustness.add_argument("--limit", type=int, default=1)
     robustness.add_argument("--llm", default="deepseek")
     robustness.add_argument("--seed", type=int, default=0)
+    robustness.add_argument("--agents", default="one_shot,react")
     robustness.add_argument("--sample", choices=["random", "first"], default="random")
     robustness.add_argument("--sample-seed", type=int, default=42)
 
@@ -209,6 +210,7 @@ def _cmd_tables(args: argparse.Namespace) -> None:
 def _cmd_robustness(args: argparse.Namespace) -> None:
     table_dir = args.experiment_dir / "tables"
     tables = build_tables_from_experiment(args.experiment_dir, table_dir)
+    agents = [item.strip() for item in args.agents.split(",") if item.strip()]
     rows = run_robustness(
         tasks_dir=args.tasks_dir,
         output_dir=args.experiment_dir / "robustness",
@@ -217,6 +219,7 @@ def _cmd_robustness(args: argparse.Namespace) -> None:
         llm=args.llm,
         sample=args.sample,
         sample_seed=args.sample_seed,
+        agents=agents,
     )
     add_robustness_table(tables, rows, table_dir)
     print(f"robustness written to {args.experiment_dir / 'robustness'}")

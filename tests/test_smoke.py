@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from eduplanbench.agents import create_agent
 from eduplanbench.agents.external import external_agent_status
+from eduplanbench.core.env import build_external_llm_env, get_llm_settings
 from eduplanbench.core.io import write_jsonl
 from eduplanbench.core.schema import GoalSpec, LearnerProfile, Resource, TaskInstance
 from eduplanbench.data.task_builders import load_tasks
@@ -93,3 +94,19 @@ def test_disabled_external_agent_has_clear_error() -> None:
         assert "registered but disabled" in str(exc)
     else:
         raise AssertionError("disabled external agent should not instantiate")
+
+
+def test_unified_llm_env_aliases(monkeypatch) -> None:
+    monkeypatch.setenv("EDUPLAN_LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("EDUPLAN_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("EDUPLAN_LLM_BASE_URL", "https://example.test/v1")
+    monkeypatch.setenv("EDUPLAN_LLM_MODEL", "test-model")
+
+    settings = get_llm_settings()
+    env = build_external_llm_env({})
+
+    assert settings["api_key"] == "test-key"
+    assert env["EDUPLAN_LLM_API_KEY"] == "test-key"
+    assert env["OPENAI_API_KEY"] == "test-key"
+    assert env["OPENAI_BASE_URL"] == "https://example.test/v1"
+    assert env["OPENAI_MODEL"] == "test-model"

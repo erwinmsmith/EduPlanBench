@@ -26,17 +26,19 @@ def run_robustness(
     llm: str = "deepseek",
     sample: str = "random",
     sample_seed: int = 42,
+    agents: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     out_dir = ensure_dir(output_dir)
     rows: list[dict[str, Any]] = []
     task_ids: dict[str, list[str]] = {}
+    agent_names = agents or list(ROBUSTNESS_AGENTS)
     for track in ROBUSTNESS_TRACKS:
         base_tasks = load_tasks(tasks_dir, track, limit=limit, sample=sample, seed=sample_seed)
         task_ids[track] = [task.task_id for task in base_tasks]
-        for agent_name in ROBUSTNESS_AGENTS:
+        for agent_name in agent_names:
             row: dict[str, Any] = {
                 "Track": {"track1_text_math": "Track 1", "track2_mooc_planning": "Track 2", "track3_kt_simulator": "Track 3"}[track],
-                "Agent": {"one_shot": "One-shot", "react": "ReAct"}[agent_name],
+                "Agent": {"one_shot": "One-shot", "react": "ReAct"}.get(agent_name, agent_name),
             }
             for horizon in ROBUSTNESS_HORIZONS:
                 traces: list[EpisodeTrace] = []
@@ -59,7 +61,7 @@ def run_robustness(
             "sample_seed": sample_seed,
             "horizons": ROBUSTNESS_HORIZONS,
             "tracks": ROBUSTNESS_TRACKS,
-            "agents": ROBUSTNESS_AGENTS,
+            "agents": agent_names,
             "task_ids": task_ids,
         },
     )

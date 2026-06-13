@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 import http.client
 import urllib.error
@@ -9,7 +8,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-from eduplanbench.core.env import load_dotenv
+from eduplanbench.core.env import get_llm_settings
 
 
 @dataclass(slots=True)
@@ -22,16 +21,16 @@ class OpenAICompatibleClient:
 
     @classmethod
     def from_env(cls) -> "OpenAICompatibleClient":
-        load_dotenv()
+        settings = get_llm_settings()
         return cls(
-            api_key=os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OPENAI_API_KEY", ""),
-            base_url=os.environ.get("EDUPLAN_LLM_BASE_URL", "https://api.deepseek.com").rstrip("/"),
-            model=os.environ.get("EDUPLAN_LLM_MODEL", "deepseek-chat"),
+            api_key=settings["api_key"],
+            base_url=settings["base_url"],
+            model=settings["model"],
         )
 
     def complete_json(self, prompt: str) -> dict[str, Any]:
         if not self.api_key:
-            raise RuntimeError("missing LLM API key; set DEEPSEEK_API_KEY or OPENAI_API_KEY")
+            raise RuntimeError("missing LLM API key; set EDUPLAN_LLM_API_KEY, DEEPSEEK_API_KEY, or OPENAI_API_KEY")
         response_text = self._chat(prompt)
         return _extract_json(response_text)
 

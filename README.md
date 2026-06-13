@@ -78,12 +78,26 @@ cp .env.example .env
 Fill in `.env`:
 
 ```bash
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
+EDUPLAN_LLM_PROVIDER=deepseek
+EDUPLAN_LLM_API_KEY=your_deepseek_api_key_here
 EDUPLAN_LLM_BASE_URL=https://api.deepseek.com
 EDUPLAN_LLM_MODEL=deepseek-chat
 ```
 
-You can also export the same variables in the shell. `.env` is ignored and should not be committed.
+`EDUPLAN_LLM_API_KEY` is the preferred single key variable for built-in LLM agents and external agent bridges. For compatibility, EduPlanBench also accepts `DEEPSEEK_API_KEY` and `OPENAI_API_KEY`.
+
+When EduPlanBench launches a `stdio_json` external agent, it forwards the same LLM config as environment variables:
+
+```text
+EDUPLAN_LLM_API_KEY
+EDUPLAN_LLM_BASE_URL
+EDUPLAN_LLM_MODEL
+OPENAI_API_KEY
+OPENAI_BASE_URL
+OPENAI_MODEL
+```
+
+This lets third-party agents that use OpenAI-compatible clients share one `.env` file. HTTP external agents should load the same `.env` in their own server process; API keys are not sent in HTTP request bodies. `.env` is ignored and should not be committed.
 
 ## Data Preparation
 
@@ -228,6 +242,52 @@ python3 -m eduplanbench agents list
 
 External agents are disabled by default until their bridge command is configured. See [docs/external_agents.md](docs/external_agents.md).
 
+To evaluate a new external agent:
+
+1. Clone the registered repos:
+
+```bash
+python3 scripts/clone_external_agents.py
+```
+
+2. Implement the bridge command for the agent and set `enabled=true` in `configs/external_agents.json`.
+
+3. Run a small smoke test on one track:
+
+```bash
+python3 -m eduplanbench run \
+  --track track3_kt_simulator \
+  --agent external:lats \
+  --llm deepseek \
+  --limit 3 \
+  --sample random \
+  --sample-seed 42
+```
+
+4. Run a pilot matrix with the external agent beside built-in baselines:
+
+```bash
+python3 -m eduplanbench experiment \
+  --tracks all \
+  --agents react,one_shot,external:lats \
+  --llm deepseek \
+  --limit 30 \
+  --sample random \
+  --sample-seed 42
+```
+
+5. Run robustness on the same agent set:
+
+```bash
+python3 -m eduplanbench robustness \
+  --experiment-dir outputs/runs/experiment-YYYYMMDD-HHMMSS \
+  --agents react,external:lats \
+  --limit 10 \
+  --llm deepseek \
+  --sample random \
+  --sample-seed 42
+```
+
 Each run writes:
 
 ```text
@@ -260,6 +320,7 @@ For paper experiments, the convenience bundle runs the main matrix, robustness, 
 python3 scripts/run_experiment_bundle.py \
   --main-limit 300 \
   --robust-limit 50 \
+  --robust-agents one_shot,react \
   --agents react,one_shot,step_by_step,cot \
   --llm deepseek \
   --sample random \
@@ -267,6 +328,21 @@ python3 scripts/run_experiment_bundle.py \
 ```
 
 This keeps the task sampling reproducible while allowing the main and robustness sample sizes to differ. `--robust-limit` should usually be smaller than `--main-limit` because robustness runs four horizons and includes H=100.
+
+To include an enabled external agent in the bundle:
+
+```bash
+python3 scripts/run_experiment_bundle.py \
+  --main-limit 300 \
+  --robust-limit 50 \
+  --agents react,one_shot,step_by_step,cot,external:lats \
+  --robust-agents react,external:lats \
+  --llm deepseek \
+  --sample random \
+  --sample-seed 42
+```
+
+Use `--robust-agents same` only when you intentionally want robustness for every agent in `--agents`.
 
 The experiment directory is printed at the end, for example:
 
@@ -284,11 +360,12 @@ matrix_report.md
 
 ## Robustness Runs
 
-Robustness evaluates horizon sensitivity at H=10, H=30, H=50, and H=100 for one-shot and ReAct:
+Robustness evaluates horizon sensitivity at H=10, H=30, H=50, and H=100. By default it runs one-shot and ReAct; pass `--agents` to include external systems:
 
 ```bash
 python3 -m eduplanbench robustness \
   --experiment-dir outputs/runs/experiment-YYYYMMDD-HHMMSS \
+  --agents one_shot,react \
   --limit 1 \
   --llm deepseek \
   --sample random \

@@ -24,6 +24,11 @@ def main() -> None:
     parser.add_argument("--outputs-dir", type=Path, default=Path("outputs/runs"))
     parser.add_argument("--main-limit", type=int, default=300)
     parser.add_argument("--robust-limit", type=int, default=50)
+    parser.add_argument(
+        "--robust-agents",
+        default="one_shot,react",
+        help="Comma-separated agents for robustness runs; use 'same' to reuse --agents.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--sample", choices=["random", "first"], default="random")
     parser.add_argument("--sample-seed", type=int, default=42)
@@ -32,6 +37,7 @@ def main() -> None:
 
     tracks = list(ALL_TRACKS) if args.tracks == "all" else [item.strip() for item in args.tracks.split(",") if item.strip()]
     agents = [item.strip() for item in args.agents.split(",") if item.strip()]
+    robust_agents = agents if args.robust_agents == "same" else [item.strip() for item in args.robust_agents.split(",") if item.strip()]
 
     experiment_dir = run_experiment_matrix(
         tasks_dir=args.tasks_dir,
@@ -56,6 +62,7 @@ def main() -> None:
         llm=args.llm,
         sample=args.sample,
         sample_seed=args.sample_seed,
+        agents=robust_agents,
     )
     add_robustness_table(tables, robustness_rows, table_dir)
     print(f"robustness written to {experiment_dir / 'robustness'}")

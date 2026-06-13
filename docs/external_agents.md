@@ -34,6 +34,44 @@ Check status:
 python3 -m eduplanbench agents list
 ```
 
+## Unified LLM Environment
+
+Use one `.env` file for built-in LLM agents and external bridges:
+
+```bash
+EDUPLAN_LLM_PROVIDER=deepseek
+EDUPLAN_LLM_API_KEY=your_deepseek_api_key_here
+EDUPLAN_LLM_BASE_URL=https://api.deepseek.com
+EDUPLAN_LLM_MODEL=deepseek-chat
+```
+
+EduPlanBench also accepts `DEEPSEEK_API_KEY` and `OPENAI_API_KEY`, but `EDUPLAN_LLM_API_KEY` is preferred.
+
+For `stdio_json` bridges, EduPlanBench launches the bridge process with both EduPlanBench names and OpenAI-compatible aliases:
+
+```text
+EDUPLAN_LLM_API_KEY
+EDUPLAN_LLM_BASE_URL
+EDUPLAN_LLM_MODEL
+OPENAI_API_KEY
+OPENAI_BASE_URL
+OPENAI_MODEL
+```
+
+The JSON request also includes non-secret LLM config:
+
+```json
+{
+  "llm": {
+    "provider": "deepseek",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-chat"
+  }
+}
+```
+
+For `http_json` bridges, start the external server with the same `.env`. EduPlanBench does not send API keys in HTTP request bodies.
+
 ## Bridge Protocol
 
 Config file:
@@ -59,6 +97,11 @@ Request shape for `act`:
 {
   "event": "act",
   "agent": "lats",
+  "llm": {
+    "provider": "deepseek",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-chat"
+  },
   "task": {},
   "observation": {},
   "action_schema": {}
@@ -160,6 +203,61 @@ Add one entry to `configs/external_agents.json`:
 ```
 
 Then implement a bridge that returns EduPlanBench `Action` JSON.
+
+## Evaluation Recipe
+
+Use the same benchmark commands for external agents after the bridge is enabled.
+
+Smoke test one track:
+
+```bash
+python3 -m eduplanbench run \
+  --track track3_kt_simulator \
+  --agent external:lats \
+  --llm deepseek \
+  --limit 3 \
+  --sample random \
+  --sample-seed 42
+```
+
+Pilot matrix across all tracks:
+
+```bash
+python3 -m eduplanbench experiment \
+  --tracks all \
+  --agents react,one_shot,external:lats \
+  --llm deepseek \
+  --limit 30 \
+  --sample random \
+  --sample-seed 42
+```
+
+Robustness table for horizon sensitivity:
+
+```bash
+python3 -m eduplanbench robustness \
+  --experiment-dir outputs/runs/experiment-YYYYMMDD-HHMMSS \
+  --agents react,external:lats \
+  --limit 10 \
+  --llm deepseek \
+  --sample random \
+  --sample-seed 42
+```
+
+Full bundle with compact Excel:
+
+```bash
+python3 scripts/run_experiment_bundle.py \
+  --main-limit 300 \
+  --robust-limit 50 \
+  --agents react,one_shot,step_by_step,cot,external:lats \
+  --robust-agents react,external:lats \
+  --llm deepseek \
+  --sample random \
+  --sample-seed 42
+```
+
+Use `--robust-agents same` only if you want robustness runs for every agent in `--agents`.
 
 ## Important Notes
 
