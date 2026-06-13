@@ -1,6 +1,14 @@
 # External Agent Integration
 
-EduPlanBench can call third-party agent systems through a JSON bridge. The benchmark does not reimplement external algorithms. It sends EduPlanBench task/observation state to an external process or HTTP endpoint and expects one EduPlanBench `Action` JSON object in return.
+EduPlanBench can call third-party agent systems through a JSON bridge. It sends EduPlanBench task/observation state to an external process or HTTP endpoint and expects one EduPlanBench `Action` JSON object in return.
+
+The five registered repositories target different native environments, such as PDDL domains, HotPotQA/WebShop, WebArena, VirtualHome/ALFRED, and AgentBoard. EduPlanBench therefore provides a default bridge at:
+
+```text
+scripts/external_agent_bridge.py
+```
+
+This bridge makes the agents usable inside EduPlanBench by mapping EduPlanBench observations into each system's planning style. It does not launch the original repositories' native benchmark environments. If you want to run a repo's native runtime directly, replace the command in `configs/external_agents.json` with your own bridge.
 
 ## Cloned Repositories
 
@@ -47,7 +55,7 @@ EDUPLAN_LLM_MODEL=deepseek-chat
 
 EduPlanBench also accepts `DEEPSEEK_API_KEY` and `OPENAI_API_KEY`, but `EDUPLAN_LLM_API_KEY` is preferred.
 
-For `stdio_json` bridges, EduPlanBench launches the bridge process with both EduPlanBench names and OpenAI-compatible aliases:
+For `stdio_json` and `stdio_jsonl` bridges, EduPlanBench launches the bridge process with both EduPlanBench names and OpenAI-compatible aliases:
 
 ```text
 EDUPLAN_LLM_API_KEY
@@ -84,12 +92,17 @@ Each agent can use either:
 
 ```text
 stdio_json
+stdio_jsonl
 http_json
 ```
 
 ### stdio_json
 
 EduPlanBench runs the configured command and writes one JSON request to stdin. The bridge writes one JSON response to stdout.
+
+### stdio_jsonl
+
+EduPlanBench starts the configured command once per episode and exchanges one JSON request/response per line. This is the default for the five registered external agents because it avoids spawning a new process at every environment step.
 
 Request shape for `act`:
 
@@ -144,7 +157,7 @@ The endpoint receives the same JSON request and returns the same action JSON.
 python3 scripts/clone_external_agents.py
 ```
 
-2. Add a bridge script inside the external repo or elsewhere.
+2. Use the default bridge or add a custom bridge script inside the external repo or elsewhere.
 
 You can start from:
 
@@ -159,8 +172,8 @@ Example:
 ```json
 {
   "enabled": true,
-  "protocol": "stdio_json",
-  "command": ["python", "bridge.py"],
+  "protocol": "stdio_jsonl",
+  "command": ["{python}", "{repo_root}/scripts/external_agent_bridge.py", "--agent", "lats"],
   "cwd": "{repo_path}"
 }
 ```

@@ -25,7 +25,7 @@ def run_experiment_matrix(
 ) -> Path:
     tracks = tracks or list(ALL_TRACKS)
     agents = agents or list(DEFAULT_AGENT_SYSTEMS)
-    experiment_id = time.strftime("experiment-%Y%m%d-%H%M%S")
+    experiment_id = f"{time.strftime('experiment-%Y%m%d-%H%M%S')}-{time.time_ns() % 1_000_000_000:09d}"
     experiment_dir = ensure_dir(outputs_dir / experiment_id)
     rows: list[dict] = []
     for track in tracks:

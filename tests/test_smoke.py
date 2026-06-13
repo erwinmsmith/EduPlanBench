@@ -9,6 +9,7 @@ from eduplanbench.data.task_builders import load_tasks
 from eduplanbench.envs import EduPlanEnv
 from eduplanbench.evaluation.metrics import evaluate_traces
 from eduplanbench.core.schema import EpisodeTrace
+from eduplanbench.runner import run_benchmark
 
 
 def make_task() -> TaskInstance:
@@ -86,19 +87,46 @@ def test_random_task_sampling_is_seeded(tmp_path) -> None:
     assert first != [f"task_{idx}" for idx in range(4)]
 
 
+def test_run_benchmark_uses_unique_run_dirs(tmp_path) -> None:
+    track_dir = tmp_path / "tasks" / "track3_kt_simulator"
+    write_jsonl(track_dir / "tasks.jsonl", [make_task()])
+    out = tmp_path / "runs"
+
+    first = run_benchmark(
+        tasks_dir=tmp_path / "tasks",
+        outputs_dir=out,
+        track="track3_kt_simulator",
+        agent_name="random",
+        limit=1,
+    )
+    second = run_benchmark(
+        tasks_dir=tmp_path / "tasks",
+        outputs_dir=out,
+        track="track3_kt_simulator",
+        agent_name="random",
+        limit=1,
+    )
+
+    assert first != second
+    assert (first / "episodes.jsonl.gz").exists()
+    assert (second / "episodes.jsonl.gz").exists()
+
+
 def test_external_agent_registry_is_available() -> None:
     rows = external_agent_status()
     names = {row["name"] for row in rows}
     assert {"llm_pddl", "lats", "plan_and_act", "reactree", "hiagent"}.issubset(names)
 
 
-def test_disabled_external_agent_has_clear_error() -> None:
-    try:
-        create_agent("external:lats")
-    except RuntimeError as exc:
-        assert "registered but disabled" in str(exc)
-    else:
-        raise AssertionError("disabled external agent should not instantiate")
+def test_enabled_external_agent_can_act() -> None:
+    task = make_task()
+    env = EduPlanEnv(task, seed=1)
+    agent = create_agent("external:lats")
+    agent.reset(task)
+    action = agent.act(env.reset())
+    valid, error = action.validate_for(task.resource_pool)
+    assert valid, error
+    assert action.payload["external_agent"] == "lats"
 
 
 def test_unified_llm_env_aliases(monkeypatch) -> None:

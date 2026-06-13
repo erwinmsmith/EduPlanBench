@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import selectors
 import subprocess
 import urllib.request
 from dataclasses import dataclass
@@ -103,9 +104,10 @@ class ExternalAgentAdapter:
                 f"Clone/setup its repo, implement its JSON bridge, then set enabled=true in {DEFAULT_CONFIG}. "
                 f"Notes: {self.spec.notes}"
             )
-        if self.spec.protocol not in {"stdio_json", "http_json"}:
+        if self.spec.protocol not in {"stdio_json", "stdio_jsonl", "http_json"}:
             raise ValueError(f"unsupported external agent protocol for {self.name}: {self.spec.protocol}")
         self.task: TaskInstance | None = None
+        self._process: subprocess.Popen[str] | None = None
 
     def reset(self, task: TaskInstance) -> None:
         self.task = task
@@ -145,6 +147,8 @@ class ExternalAgentAdapter:
     def _send(self, request: dict[str, Any], *, required: bool) -> dict[str, Any]:
         if self.spec.protocol == "stdio_json":
             return self._send_stdio(request, required=required)
+        if self.spec.protocol == "stdio_jsonl":
+            return self._send_stdio_jsonl(request, required=required)
         if self.spec.protocol == "http_json":
             return self._send_http(request, required=required)
         raise ValueError(self.spec.protocol)
@@ -177,7 +181,62 @@ class ExternalAgentAdapter:
         stdout = completed.stdout.strip()
         if not stdout:
             return {}
-        return json.loads(stdout)
+        return json.loads(stdout.splitlines()[-1])
+
+    def _send_stdio_jsonl(self, request: dict[str, Any], *, required: bool) -> dict[str, Any]:
+        if not self.spec.command:
+            if required:
+                raise RuntimeError(f"external agent '{self.name}' has no command configured")
+            return {}
+        process = self._ensure_jsonl_process()
+        assert process.stdin is not None
+        assert process.stdout is not None
+        try:
+            process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
+            process.stdin.flush()
+            line = _read_jsonl_response(process, timeout=self.spec.timeout_seconds)
+        except Exception as exc:
+            self._terminate_jsonl_process()
+            if required:
+                raise RuntimeError(f"external agent '{self.name}' JSONL bridge failed: {exc}") from exc
+            return {}
+        if not line:
+            return {}
+        return json.loads(line)
+
+    def _ensure_jsonl_process(self) -> subprocess.Popen[str]:
+        if self._process is not None and self._process.poll() is None:
+            return self._process
+        env = build_external_llm_env(os.environ.copy())
+        env["EDUPLAN_EXTERNAL_AGENT_NAME"] = self.name
+        env["EDUPLAN_EXTERNAL_REPO_PATH"] = str(self.spec.repo_path)
+        self._process = subprocess.Popen(
+            self.spec.command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=self.spec.cwd,
+            env=env,
+        )
+        return self._process
+
+    def _terminate_jsonl_process(self) -> None:
+        process = self._process
+        self._process = None
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+    def __del__(self) -> None:
+        try:
+            self._terminate_jsonl_process()
+        except Exception:
+            pass
 
     def _send_http(self, request: dict[str, Any], *, required: bool) -> dict[str, Any]:
         if not self.spec.endpoint:
@@ -229,3 +288,19 @@ def _resolve_path(value: str) -> Path:
 
 def _resolve_template(value: str, *, repo_path: Path) -> str:
     return value.format(repo_root=PROJECT_ROOT, repo_path=repo_path, python=os.environ.get("PYTHON", "python"))
+
+
+def _read_jsonl_response(process: subprocess.Popen[str], *, timeout: int) -> str:
+    assert process.stdout is not None
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ)
+    events = selector.select(timeout)
+    selector.close()
+    if not events:
+        stderr = process.stderr.read() if process.poll() is not None and process.stderr else ""
+        raise TimeoutError(stderr.strip() or "timed out waiting for bridge response")
+    line = process.stdout.readline()
+    if line:
+        return line.strip()
+    stderr = process.stderr.read() if process.stderr else ""
+    raise RuntimeError(stderr.strip() or "bridge process closed stdout")

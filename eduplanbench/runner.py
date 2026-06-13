@@ -27,7 +27,7 @@ def run_benchmark(
     tasks = load_tasks(tasks_dir, track, limit=limit, sample=sample, seed=sample_seed)
     if not tasks:
         raise FileNotFoundError(f"no tasks found for {track}; run build-tasks first")
-    run_id = time.strftime("%Y%m%d-%H%M%S")
+    run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 1_000_000_000:09d}"
     out_dir = ensure_dir(outputs_dir / run_id)
     latest = outputs_dir / "latest"
     if latest.exists() or latest.is_symlink():
