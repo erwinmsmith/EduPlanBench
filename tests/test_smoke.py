@@ -91,6 +91,30 @@ def test_random_task_sampling_is_seeded(tmp_path) -> None:
     assert first != [f"task_{idx}" for idx in range(4)]
 
 
+def test_stratified_task_sampling_is_seeded_and_balanced(tmp_path) -> None:
+    track_dir = tmp_path / "track1_text_math"
+    rows = []
+    groups = ["Easy", "Medium", "Hard"]
+    for idx in range(18):
+        task = make_task()
+        task.track = "track1_text_math"
+        task.task_id = f"task_{idx}"
+        task.metadata = {
+            "difficulty_group": groups[idx % len(groups)],
+            "perturbations": [{"type": "forced_error_streak"}] if idx % 2 else [],
+            "case": {"is_correct": bool(idx % 3 == 0)},
+        }
+        rows.append(task)
+    write_jsonl(track_dir / "tasks.jsonl", rows)
+
+    first = load_tasks(tmp_path, "track1_text_math", limit=6, sample="stratified", seed=7)
+    second = load_tasks(tmp_path, "track1_text_math", limit=6, sample="stratified", seed=7)
+    difficulties = {task.metadata["difficulty_group"] for task in first}
+
+    assert [task.task_id for task in first] == [task.task_id for task in second]
+    assert len(difficulties) >= 2
+
+
 def test_run_benchmark_uses_unique_run_dirs(tmp_path) -> None:
     track_dir = tmp_path / "tasks" / "track3_kt_simulator"
     write_jsonl(track_dir / "tasks.jsonl", [make_task()])

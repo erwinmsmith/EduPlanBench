@@ -18,6 +18,8 @@ from eduplanbench.core.schema import (
 )
 from eduplanbench.graphs.resource_graph import TextResourceGraph
 
+SAMPLE_MODES = ("first", "random", "stratified")
+
 
 def build_tasks(track: str, processed_dir: Path, tasks_dir: Path, *, limit: int = 100) -> dict[str, Any]:
     if track == "all":
@@ -61,7 +63,7 @@ def load_tasks(
 
 
 def _sample_rows(path: Path, *, limit: int | None, sample: str, rng: random.Random) -> list[dict[str, Any]]:
-    if sample not in {"first", "random"}:
+    if sample not in SAMPLE_MODES:
         raise ValueError(f"unknown sample mode: {sample}")
     if sample == "first":
         rows = []
@@ -71,10 +73,71 @@ def _sample_rows(path: Path, *, limit: int | None, sample: str, rng: random.Rand
             rows.append(row)
         return rows
     rows = list(read_jsonl(path))
+    if sample == "stratified":
+        return _stratified_sample(rows, limit=limit, rng=rng)
     if limit is None or limit >= len(rows):
         rng.shuffle(rows)
         return rows
     return rng.sample(rows, limit)
+
+
+def _stratified_sample(rows: list[dict[str, Any]], *, limit: int | None, rng: random.Random) -> list[dict[str, Any]]:
+    if not rows:
+        return []
+    strata: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for row in rows:
+        strata.setdefault(_stratum_key(row), []).append(row)
+    keys = list(strata)
+    rng.shuffle(keys)
+    for key in keys:
+        rng.shuffle(strata[key])
+
+    target = len(rows) if limit is None or limit >= len(rows) else limit
+    selected: list[dict[str, Any]] = []
+    while len(selected) < target and keys:
+        next_keys: list[tuple[Any, ...]] = []
+        for key in keys:
+            bucket = strata[key]
+            if bucket:
+                selected.append(bucket.pop())
+                if len(selected) >= target:
+                    break
+            if bucket:
+                next_keys.append(key)
+        keys = next_keys
+        rng.shuffle(keys)
+    return selected
+
+
+def _stratum_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    track = row.get("track", "")
+    metadata = row.get("metadata") or {}
+    perturbation_flag = "perturbed" if metadata.get("perturbations") else "static"
+    if track == TRACK1:
+        case = metadata.get("case") or {}
+        correctness = "initial_correct" if case.get("is_correct") else "initial_incorrect"
+        return (
+            track,
+            metadata.get("difficulty_group", "unknown_difficulty"),
+            perturbation_flag,
+            correctness,
+        )
+    if track == TRACK2:
+        return (
+            track,
+            metadata.get("task_type", "unknown_task_type"),
+            perturbation_flag,
+        )
+    if track == TRACK3:
+        horizon = int(row.get("horizon", 0) or 0)
+        horizon_bucket = "short" if horizon <= 10 else "medium" if horizon <= 30 else "long"
+        return (
+            track,
+            metadata.get("source", "unknown_source"),
+            perturbation_flag,
+            horizon_bucket,
+        )
+    return (track, perturbation_flag)
 
 
 def task_from_dict(row: dict[str, Any]) -> TaskInstance:

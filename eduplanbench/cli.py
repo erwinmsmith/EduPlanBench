@@ -9,7 +9,7 @@ from eduplanbench.core.schema import ALL_TRACKS, TRACK1, TRACK2, TRACK3, Episode
 from eduplanbench.agents import external_agent_status
 from eduplanbench.data.downloaders import fetch_huggingface_dataset, fetch_mooccubex_minimal
 from eduplanbench.data.prepare import prepare_track1, prepare_track2, prepare_track3
-from eduplanbench.data.task_builders import build_tasks, task_from_dict
+from eduplanbench.data.task_builders import SAMPLE_MODES, build_tasks, task_from_dict
 from eduplanbench.evaluation.metrics import evaluate_traces
 from eduplanbench.evaluation.report import write_report
 from eduplanbench.evaluation.tables import build_tables_from_experiment
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--outputs-dir", type=Path, default=DEFAULT_OUTPUTS)
     run.add_argument("--limit", type=int, default=10)
     run.add_argument("--seed", type=int, default=0)
-    run.add_argument("--sample", choices=["random", "first"], default="random")
+    run.add_argument("--sample", choices=SAMPLE_MODES, default="random")
     run.add_argument("--sample-seed", type=int, default=42)
 
     evaluate = sub.add_parser("evaluate")
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> None:
     robustness.add_argument("--llm", default="deepseek")
     robustness.add_argument("--seed", type=int, default=0)
     robustness.add_argument("--agents", default="one_shot,react")
-    robustness.add_argument("--sample", choices=["random", "first"], default="random")
+    robustness.add_argument("--sample", choices=SAMPLE_MODES, default="random")
     robustness.add_argument("--sample-seed", type=int, default=42)
 
     experiment = sub.add_parser("experiment")
@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> None:
     experiment.add_argument("--outputs-dir", type=Path, default=DEFAULT_OUTPUTS)
     experiment.add_argument("--limit", type=int, default=5)
     experiment.add_argument("--seed", type=int, default=0)
-    experiment.add_argument("--sample", choices=["random", "first"], default="random")
+    experiment.add_argument("--sample", choices=SAMPLE_MODES, default="random")
     experiment.add_argument("--sample-seed", type=int, default=42)
 
     agents_cmd = sub.add_parser("agents")

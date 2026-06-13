@@ -12,6 +12,7 @@ from eduplanbench.core.schema import ALL_TRACKS
 from eduplanbench.evaluation.robustness import run_robustness
 from eduplanbench.evaluation.tables import add_robustness_table, build_tables_from_experiment
 from eduplanbench.experiments import DEFAULT_AGENT_SYSTEMS, run_experiment_matrix
+from eduplanbench.data.task_builders import SAMPLE_MODES
 from scripts.build_experiment_tables_compact_xlsx import build_compact_workbook
 
 
@@ -30,7 +31,7 @@ def main() -> None:
         help="Comma-separated agents for robustness runs; use 'same' to reuse --agents.",
     )
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--sample", choices=["random", "first"], default="random")
+    parser.add_argument("--sample", choices=SAMPLE_MODES, default="random")
     parser.add_argument("--sample-seed", type=int, default=42)
     parser.add_argument("--workbook", type=Path, default=None)
     args = parser.parse_args()
