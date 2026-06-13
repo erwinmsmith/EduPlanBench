@@ -29,6 +29,7 @@ HEADER_MAP = {
     "Core ↑": "Core",
     "Track ↑": "Track",
     "GSR ↑": "GSR",
+    "Mastery GSR ↑": "MGSR",
     "PR ↑": "PR",
     "Steps ↓": "Steps",
     "Valid ↑": "Valid",

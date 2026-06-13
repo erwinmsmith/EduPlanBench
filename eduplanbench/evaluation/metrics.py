@@ -31,8 +31,10 @@ def _metrics_for_trace(trace: EpisodeTrace) -> dict[str, float]:
     final_avg = sum(target_scores) / max(1, len(target_scores))
     initial_avg = sum(initial_scores) / max(1, len(initial_scores))
     progress = max(0.0, final_avg - initial_avg) / max(1e-6, task.goal.target_mastery - initial_avg)
+    mastery_gsr = 1.0 if final_avg >= task.goal.target_mastery else 0.0
     row = {
-        "gsr": 1.0 if final_avg >= task.goal.target_mastery else 0.0,
+        "gsr": mastery_gsr,
+        "mastery_gsr": mastery_gsr,
         "pr": min(1.0, progress),
         "steps": float(steps),
         "normalized_steps": steps / max(1, task.horizon),
@@ -72,6 +74,7 @@ def _metrics_for_trace(trace: EpisodeTrace) -> dict[str, float]:
             - 0.10 * row["dropout_risk"]
             - 0.10 * row["simulator_exploitation_rate"]
         )
+    row["gsr"] = _goal_success(task.track, row)
     row["core_score"] = _clamp01(
         0.35 * row["gsr"]
         + 0.25 * row["pr"]
@@ -87,6 +90,27 @@ def _metrics_for_trace(trace: EpisodeTrace) -> dict[str, float]:
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
+
+
+def _goal_success(track: str, row: dict[str, float]) -> float:
+    if row.get("mastery_gsr", 0.0) >= 1.0:
+        return 1.0
+    if track == TRACK1:
+        has_diagnosis = row.get("misconception_diagnosis_accuracy", 0.0) >= 0.35
+        has_remediation = row.get("remediation_success", 0.0) >= 1.0
+        grounded = row.get("feedback_grounding", 0.0) >= 0.35 or row.get("remediation_match", 0.0) >= 0.05
+        adaptive = row.get("error_aware_replanning_quality", 0.0) >= 0.30
+        return 1.0 if has_diagnosis and has_remediation and grounded and adaptive else 0.0
+    if track == TRACK2:
+        path_ok = (
+            row.get("prerequisite_violation_rate", 1.0) <= 0.10
+            and row.get("resource_concept_match", 0.0) >= 0.50
+            and row.get("constraint_satisfaction", 0.0) >= 0.70
+            and row.get("path_coherence", 0.0) >= 0.70
+        )
+        progress_ok = row.get("pr", 0.0) >= 0.50
+        return 1.0 if path_ok and progress_ok else 0.0
+    return 0.0
 
 
 def _track1(trace: EpisodeTrace) -> dict[str, float]:

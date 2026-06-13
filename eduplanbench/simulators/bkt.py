@@ -64,7 +64,11 @@ class RuleBKTStudentSimulator:
         difficulty = resource.difficulty if resource else 0.5
         avg_mastery = sum(self.true_mastery.get(c, self.params.prior) for c in concepts) / max(1, len(concepts))
         empirical = None
-        if resource:
+        use_empirical_feedback = bool(
+            self.task.constraints.get("use_empirical_feedback")
+            or (resource and resource.metadata.get("use_empirical_feedback"))
+        )
+        if resource and use_empirical_feedback:
             response = str(resource.metadata.get("response", ""))
             is_correct = resource.metadata.get("is_correct")
             if response in {"0", "1"}:

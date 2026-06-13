@@ -124,6 +124,7 @@ def _main_table(per_combo: dict, track: str) -> list[dict[str, Any]]:
                 "Core ↑": metrics.get("core_score"),
                 "Track ↑": metrics.get("track_score"),
                 "GSR ↑": metrics.get("gsr"),
+                "Mastery GSR ↑": metrics.get("mastery_gsr"),
                 "PR ↑": metrics.get("pr"),
                 "Steps ↓": metrics.get("steps"),
                 "Valid ↑": metrics.get("valid_action_rate"),

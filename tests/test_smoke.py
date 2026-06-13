@@ -4,7 +4,7 @@ from eduplanbench.agents import create_agent
 from eduplanbench.agents.external import external_agent_status
 from eduplanbench.core.env import build_external_llm_env, get_llm_settings
 from eduplanbench.core.io import write_jsonl
-from eduplanbench.core.schema import GoalSpec, LearnerProfile, Resource, TaskInstance
+from eduplanbench.core.schema import Action, GoalSpec, LearnerProfile, Resource, TaskInstance
 from eduplanbench.data.task_builders import load_tasks
 from eduplanbench.envs import EduPlanEnv
 from eduplanbench.evaluation.metrics import evaluate_traces
@@ -13,6 +13,7 @@ from eduplanbench.evaluation.tables import build_tables_from_experiment, _track1
 from eduplanbench.experiments import run_experiment_matrix
 from eduplanbench.core.schema import EpisodeTrace
 from eduplanbench.runner import run_benchmark
+from eduplanbench.simulators.bkt import RuleBKTStudentSimulator
 
 
 def make_task() -> TaskInstance:
@@ -226,6 +227,38 @@ def test_track3_track_score_is_clamped_non_negative() -> None:
 
     assert metrics["track_score"] == 0.0
     assert metrics["overall_score"] >= 0.0
+
+
+def test_track_goal_success_keeps_mastery_gsr_separate() -> None:
+    task = make_task()
+    task.track = "track1_text_math"
+    task.metadata = {"case": {"misconception": "fractions mistake"}}
+    trace = _trace_for_table(task, final_mastery=0.3)
+    trace.steps[0]["action"]["action_type"] = "recommend_explanation"
+    trace.steps[0]["action"]["rationale"] = "fractions mistake; incorrect; needs review"
+    trace.steps[0]["action"]["payload"] = {"diagnosis": "fractions mistake"}
+    trace.steps.append({**trace.steps[0], "action": {**trace.steps[0]["action"], "action_type": "update_plan", "plan_update": "review fractions mistake"}})
+
+    metrics = _metrics_for_trace(trace)
+
+    assert metrics["mastery_gsr"] == 0.0
+    assert metrics["gsr"] == 1.0
+
+
+def test_historical_response_is_not_forced_without_opt_in() -> None:
+    task = make_task()
+    task.resource_pool[0].metadata = {"response": "1", "is_correct": True}
+
+    sim = RuleBKTStudentSimulator(task, seed=0)
+    before = sim.true_mastery["fractions"]
+    info = sim.apply(
+        Action(action_type="recommend_exercise", resource_id="r1", target_concepts=["fractions"]),
+        task.resource_pool[0],
+        0,
+    )
+
+    assert info["student_feedback"]["empirical_feedback"] is False
+    assert sim.true_mastery["fractions"] != before or info["student_feedback"]["correct"] is not True
 
 
 def test_unified_llm_env_aliases(monkeypatch) -> None:

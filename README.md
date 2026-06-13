@@ -519,7 +519,8 @@ The workbook uses short column names and compact widths. It is intended for quic
 
 Core metrics:
 
-- `GSR`: goal success rate.
+- `GSR`: track-aware goal success rate. It uses mastery success when the learner reaches the target threshold, and for Track 1/2 also credits task-goal success from diagnosis/remediation or path-quality criteria.
+- `MGSR`: mastery-only goal success rate, reported as `Mastery GSR` in main tables.
 - `PR`: progress rate toward target mastery.
 - `Steps`: episode length.
 - `Valid`: valid action rate.
