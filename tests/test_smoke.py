@@ -63,6 +63,11 @@ def test_invalid_action_is_detected() -> None:
     assert "hidden" in result.info
 
 
+def test_llm_flag_does_not_convert_rule_agent() -> None:
+    agent = create_agent("random", llm="deepseek")
+    assert agent.system_name == "random"
+
+
 def test_random_task_sampling_is_seeded(tmp_path) -> None:
     track_dir = tmp_path / "track3_kt_simulator"
     rows = []

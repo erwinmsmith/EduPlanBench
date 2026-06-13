@@ -325,7 +325,7 @@ def create_agent(name: str, *, llm: str | None = None) -> Agent:
 
     if normalized.startswith("external:") or is_external_agent(normalized):
         return ExternalAgentAdapter(normalized)
-    if llm or normalized in LLM_AGENT_REGISTRY:
+    if normalized in LLM_AGENT_REGISTRY:
         cls = LLM_AGENT_REGISTRY.get(normalized, ReActPlannerAgent)
         return cls()
     if normalized in AGENT_REGISTRY:
