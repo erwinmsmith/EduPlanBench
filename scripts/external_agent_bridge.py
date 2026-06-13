@@ -26,6 +26,16 @@ RESOURCE_ACTIONS = {
     "recommend_similar_problem",
 }
 
+NON_LEARNING_ACTIONS = {
+    "diagnostic_quiz",
+    "recommend_diagnostic",
+    "diagnose_misconception",
+    "update_plan",
+    "update_path",
+    "wait_or_reduce_load",
+    "summarize_knowledge",
+}
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="EduPlanBench JSON bridge for registered external agent systems.")
@@ -54,11 +64,13 @@ class EduPlanBridge:
         self.agent = normalize_agent(agent)
         self.task: dict[str, Any] | None = None
         self.client: OpenAICompatibleClient | None = None
+        self.history: list[dict[str, Any]] = []
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         event = request.get("event")
         if event == "reset":
             self.task = request.get("task")
+            self.history = []
             return {}
         if event == "reflect":
             return {"reflection": f"{self.agent} bridge completed EduPlanBench episode reflection."}
@@ -68,9 +80,18 @@ class EduPlanBridge:
         task = request.get("task") or self.task or {}
         fallback = self._fallback_action(task, observation)
         llm_action = self._llm_action(task, observation, fallback)
-        if llm_action is not None:
-            return llm_action
-        return fallback
+        response = llm_action if llm_action is not None else fallback
+        response = enforce_bridge_policy(response, task, observation, fallback, self.history, self.agent)
+        self.history.append(
+            {
+                "step": observation.get("step"),
+                "action_type": response.get("action_type"),
+                "resource_id": response.get("resource_id"),
+                "target_concepts": response.get("target_concepts", []),
+            }
+        )
+        self.history = self.history[-20:]
+        return response
 
     def _fallback_action(self, task: dict[str, Any], observation: dict[str, Any]) -> dict[str, Any]:
         if self.agent == "llm_pddl":
@@ -99,7 +120,7 @@ class EduPlanBridge:
                 self.client = OpenAICompatibleClient.from_env()
                 self.client.timeout = int(os.environ.get("EDUPLAN_EXTERNAL_BRIDGE_TIMEOUT", "60"))
                 self.client.max_retries = int(os.environ.get("EDUPLAN_EXTERNAL_BRIDGE_RETRIES", "1"))
-            prompt = build_agent_prompt(self.agent, task, observation, fallback)
+            prompt = build_agent_prompt(self.agent, task, observation, fallback, self.history)
             payload = self.client.complete_json(prompt)
             return normalize_llm_action(payload, observation, fallback, self.agent)
         except Exception as exc:
@@ -249,15 +270,17 @@ def action(action_type: str, concepts: list[str], rationale: str, *, plan_update
     }
 
 
-def build_agent_prompt(agent: str, task: dict[str, Any], observation: dict[str, Any], fallback: dict[str, Any]) -> str:
+def build_agent_prompt(agent: str, task: dict[str, Any], observation: dict[str, Any], fallback: dict[str, Any], history: list[dict[str, Any]] | None = None) -> str:
     family = prompt_family(agent)
-    context = compact_context(task, observation, fallback)
+    history = history or []
+    context = compact_context(task, observation, fallback, history)
     return (
         f"{family['role']}\n\n"
         "You are controlling an EduPlanBench learning-planning episode. "
         "The task is long-horizon: you must use learner feedback, visible mastery, dynamic events, and candidate resources to choose the next step. "
         "Do not solve the math problem for the learner unless the action is an explanation/review and the hint remains pedagogically appropriate.\n\n"
         f"{family['method']}\n\n"
+        f"{track_policy(task, observation, history)}\n\n"
         "Return exactly one strict JSON object with this schema:\n"
         "{\n"
         '  "action_type": "one of recommend_exercise, recommend_explanation, recommend_review, diagnostic_quiz, update_plan, diagnose_misconception, wait_or_reduce_load, recommend_easier_problem, recommend_similar_problem, summarize_knowledge",\n'
@@ -270,11 +293,44 @@ def build_agent_prompt(agent: str, task: dict[str, Any], observation: dict[str, 
         "Legality constraints:\n"
         "- If action_type recommends a resource, choose an existing resource_id from candidate_resources only.\n"
         "- Never output null resource_id for recommend_exercise/recommend_explanation/recommend_review/recommend_easier_problem/recommend_similar_problem.\n"
+        "- diagnostic_quiz, diagnose_misconception, update_plan, and wait_or_reduce_load do not directly increase mastery; do not repeat them when resources are available.\n"
+        "- Avoid repeating the same resource more than twice unless recent feedback explicitly says it helped.\n"
         "- If recent feedback shows incorrect/forgotten/overload, prefer diagnostic, review, easier problem, or replan over harder practice.\n"
         "- If a resource is unavailable or time budget changed, update the plan or select an alternative resource.\n"
         "- Keep the rationale short; do not include hidden chain-of-thought.\n\n"
         f"EduPlanBench context JSON:\n{json.dumps(context, ensure_ascii=False)}"
     )
+
+
+def track_policy(task: dict[str, Any], observation: dict[str, Any], history: list[dict[str, Any]]) -> str:
+    track = str(task.get("track") or observation.get("metadata", {}).get("track") or "")
+    repeated_non_learning = recent_non_learning_count(history)
+    common = (
+        f"Recent non-learning action streak: {repeated_non_learning}. "
+        "If the streak is >=2 and a valid candidate resource exists, choose a resource action now."
+    )
+    if track == "track1_text_math":
+        return (
+            "Track-specific policy for Track 1 Text-Math: diagnose the misconception early, then act on it. "
+            "After one diagnosis/diagnostic step, use Eedi/MathDial/Misstep candidate resources for recommend_explanation, recommend_review, "
+            "recommend_easier_problem, or recommend_similar_problem. Repeating diagnose_misconception without remediation is a failure mode. "
+            f"{common}"
+        )
+    if track == "track2_mooc_planning":
+        return (
+            "Track-specific policy for Track 2 MOOC Planning: this is prerequisite/resource path planning, not misconception tutoring. "
+            "Do not use diagnose_misconception. Use diagnostic_quiz at most once, then recommend prerequisite resources before target resources. "
+            "Minimize prerequisite violations, plan drift, repeated resources, and over-budget wandering. "
+            f"{common}"
+        )
+    if track == "track3_kt_simulator":
+        return (
+            "Track-specific policy for Track 3 KT Simulator: actions must affect the simulator through target-concept exercises, review, or explanations. "
+            "Use diagnostic_quiz sparingly to improve visible estimates, then recommend exercise/review resources near learner readiness. "
+            "Avoid repeated diagnostics and repeated identical resources. "
+            f"{common}"
+        )
+    return common
 
 
 def prompt_family(agent: str) -> dict[str, str]:
@@ -326,7 +382,7 @@ def prompt_family(agent: str) -> dict[str, str]:
     }
 
 
-def compact_context(task: dict[str, Any], observation: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+def compact_context(task: dict[str, Any], observation: dict[str, Any], fallback: dict[str, Any], history: list[dict[str, Any]]) -> dict[str, Any]:
     resources = []
     for resource in observation.get("candidate_resources", [])[:15]:
         resources.append(
@@ -367,8 +423,27 @@ def compact_context(task: dict[str, Any], observation: dict[str, Any], fallback:
                 "prerequisites": observation.get("metadata", {}).get("prerequisites", []),
             },
             "candidate_resources": resources,
+            "action_history": history_summary(history),
         },
         "deterministic_fallback_action": fallback,
+    }
+
+
+def history_summary(history: list[dict[str, Any]]) -> dict[str, Any]:
+    action_counts: dict[str, int] = {}
+    resource_counts: dict[str, int] = {}
+    for item in history:
+        action_type = str(item.get("action_type") or "")
+        resource_id = str(item.get("resource_id") or "")
+        if action_type:
+            action_counts[action_type] = action_counts.get(action_type, 0) + 1
+        if resource_id:
+            resource_counts[resource_id] = resource_counts.get(resource_id, 0) + 1
+    return {
+        "recent": history[-6:],
+        "action_counts": action_counts,
+        "resource_counts": resource_counts,
+        "non_learning_streak": recent_non_learning_count(history),
     }
 
 
@@ -405,6 +480,58 @@ def normalize_llm_action(payload: dict[str, Any], observation: dict[str, Any], f
     if repaired_resource:
         result["payload"]["llm_resource_repaired"] = True
     return result
+
+
+def enforce_bridge_policy(
+    payload: dict[str, Any],
+    task: dict[str, Any],
+    observation: dict[str, Any],
+    fallback: dict[str, Any],
+    history: list[dict[str, Any]],
+    agent: str,
+) -> dict[str, Any]:
+    track = str(task.get("track") or observation.get("metadata", {}).get("track") or "")
+    action_type = str(payload.get("action_type") or "")
+    repair_reason = ""
+    if track == "track2_mooc_planning" and action_type == "diagnose_misconception":
+        repair_reason = "track2_no_misconception_diagnosis"
+    elif action_type in NON_LEARNING_ACTIONS and recent_non_learning_count(history) >= 2 and observation.get("candidate_resources"):
+        repair_reason = "repeated_non_learning_action"
+    elif payload.get("resource_id") and repeated_resource_count(history, str(payload.get("resource_id"))) >= 2:
+        repair_reason = "repeated_resource"
+    if not repair_reason:
+        return payload
+    repaired = policy_resource_action(task, observation, agent, repair_reason)
+    if repaired is not None:
+        return repaired
+    payload.setdefault("payload", {})["policy_warning"] = repair_reason
+    return payload
+
+
+def policy_resource_action(task: dict[str, Any], observation: dict[str, Any], agent: str, reason: str) -> dict[str, Any] | None:
+    track = str(task.get("track") or observation.get("metadata", {}).get("track") or "")
+    mastery = observation.get("estimated_mastery", {})
+    resources = observation.get("candidate_resources", [])
+    target = target_concepts(observation)
+    if track == "track2_mooc_planning":
+        prereqs = list(observation.get("metadata", {}).get("prerequisites") or task.get("constraints", {}).get("prerequisites") or [])
+        weak_prereqs = [concept for concept in prereqs if float(mastery.get(concept, 0.0)) < 0.6]
+        concepts = weak_prereqs or prereqs[:1] or target
+        resource = select_resource(resources, concepts, mastery, preferred_types=["lecture_text", "explanation", "exercise", "problem"], difficulty_bias=0.0)
+        if resource:
+            kind = "recommend_review" if resource_type(resource) in {"exercise", "problem"} and concepts != target else "recommend_explanation"
+            return resource_action(kind, resource, f"Bridge repaired policy violation ({reason}) by selecting a prerequisite/path resource.", {"bridge_strategy": agent, "policy_repair": reason})
+    elif track == "track1_text_math":
+        resource = select_resource(resources, weak_concepts(observation, threshold=0.6) or target, mastery, preferred_types=["explanation", "lecture_text", "exercise", "problem"], difficulty_bias=-0.05)
+        if resource:
+            kind = "recommend_review" if resource_type(resource) in {"exercise", "problem"} else "recommend_explanation"
+            return resource_action(kind, resource, f"Bridge repaired repeated diagnosis ({reason}) with misconception remediation.", {"bridge_strategy": agent, "policy_repair": reason})
+    elif track == "track3_kt_simulator":
+        resource = select_resource(resources, target, mastery, preferred_types=["exercise", "problem", "explanation"], difficulty_bias=0.12)
+        if resource:
+            kind = "recommend_exercise" if resource_type(resource) in {"exercise", "problem"} else "recommend_explanation"
+            return resource_action(kind, resource, f"Bridge repaired policy violation ({reason}) with a simulator-effective resource.", {"bridge_strategy": agent, "policy_repair": reason})
+    return None
 
 
 def mark_fallback(action_payload: dict[str, Any], agent: str, reason: str) -> None:
@@ -454,6 +581,24 @@ def weak_concepts(observation: dict[str, Any], *, threshold: float) -> list[str]
 def feedback_has(observation: dict[str, Any], needle: str) -> bool:
     needle_l = needle.lower()
     return any(needle_l in str(item).lower() for item in observation.get("recent_feedback", []))
+
+
+def recent_non_learning_count(history: list[dict[str, Any]]) -> int:
+    count = 0
+    for item in reversed(history):
+        if str(item.get("action_type") or "") not in NON_LEARNING_ACTIONS:
+            break
+        count += 1
+    return count
+
+
+def repeated_resource_count(history: list[dict[str, Any]], resource_id: str) -> int:
+    count = 0
+    for item in reversed(history):
+        if str(item.get("resource_id") or "") != resource_id:
+            break
+        count += 1
+    return count
 
 
 def recent_event_requires_replan(observation: dict[str, Any]) -> bool:
