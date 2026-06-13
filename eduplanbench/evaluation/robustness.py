@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from eduplanbench.agents import create_agent
-from eduplanbench.core.io import ensure_dir, write_json, write_jsonl
+from eduplanbench.core.io import ensure_dir, read_jsonl, write_json, write_jsonl
 from eduplanbench.core.schema import EpisodeTrace, TRACK1, TRACK2, TRACK3, to_plain
 from eduplanbench.data.task_builders import load_tasks
+from eduplanbench.data.task_builders import task_from_dict
 from eduplanbench.envs import EduPlanEnv
 from eduplanbench.evaluation.metrics import _metrics_for_trace
 
@@ -41,16 +42,20 @@ def run_robustness(
                 "Agent": _agent_label(agent_name),
             }
             for horizon in ROBUSTNESS_HORIZONS:
-                traces: list[EpisodeTrace] = []
-                for idx, task in enumerate(base_tasks):
-                    task_h = replace(task, horizon=horizon, goal=replace(task.goal, horizon=horizon))
-                    trace = _run_single(task_h, agent_name, seed=seed + idx + horizon, llm=llm)
-                    traces.append(trace)
+                trace_path = out_dir / f"{track}_{agent_name}_h{horizon}.jsonl.gz"
+                traces = _load_existing_traces(trace_path, expected=len(base_tasks))
+                if traces is None:
+                    traces = []
+                    for idx, task in enumerate(base_tasks):
+                        task_h = replace(task, horizon=horizon, goal=replace(task.goal, horizon=horizon))
+                        trace = _run_single(task_h, agent_name, seed=seed + idx + horizon, llm=llm)
+                        traces.append(trace)
+                    write_jsonl(trace_path, (to_plain(t) for t in traces))
                 metrics = [_metrics_for_trace(trace) for trace in traces]
                 row[f"H={horizon} GSR ↑"] = _avg(metrics, "gsr")
                 row[f"H={horizon} PR ↑"] = _avg(metrics, "pr")
-                write_jsonl(out_dir / f"{track}_{agent_name}_h{horizon}.jsonl.gz", (to_plain(t) for t in traces))
             rows.append(row)
+            write_json(out_dir / "robustness_table.json", rows)
     write_json(
         out_dir / "config.snapshot.json",
         {
@@ -67,6 +72,21 @@ def run_robustness(
     )
     write_json(out_dir / "robustness_table.json", rows)
     return rows
+
+
+def _load_existing_traces(path: Path, *, expected: int) -> list[EpisodeTrace] | None:
+    if not path.exists():
+        return None
+    rows = list(read_jsonl(path))
+    if len(rows) != expected:
+        return None
+    traces: list[EpisodeTrace] = []
+    for row in rows:
+        trace = EpisodeTrace(task=task_from_dict(row["task"]))
+        trace.steps = row.get("steps", [])
+        trace.final_info = row.get("final_info", trace.steps[-1]["info"] if trace.steps else {})
+        traces.append(trace)
+    return traces
 
 
 def _run_single(task, agent_name: str, *, seed: int, llm: str) -> EpisodeTrace:
