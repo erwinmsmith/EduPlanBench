@@ -46,7 +46,7 @@ From the EduPlanBench repository root:
 
 ```bash
 python3 scripts/download_prepared_data_from_hf.py \
-  --repo-id <hf-namespace>/EduPlanBench-data \
+  --repo-id erwinmsmith/EduPlanBench-data \
   --data-dir data
 ```
 
