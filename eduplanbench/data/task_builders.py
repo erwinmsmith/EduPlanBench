@@ -186,8 +186,11 @@ def _build_track2(root: Path, *, limit: int) -> Iterator[TaskInstance]:
     if not graph_path.exists():
         return
     graph = TextResourceGraph.from_json(graph_path)
-    concepts = [node for node in graph.nodes.values() if node.type == "concept"]
-    for idx, concept in enumerate(concepts[:limit]):
+    concepts = _track2_concept_order(graph)
+    if not concepts:
+        return
+    for idx in range(limit):
+        concept = concepts[idx % len(concepts)]
         task_type = _track2_task_type(idx)
         prereqs = graph.prerequisites_of(concept.node_id)
         graph_concepts = prereqs[:4] + [concept.node_id]
@@ -204,10 +207,20 @@ def _build_track2(root: Path, *, limit: int) -> Iterator[TaskInstance]:
             )
             for node in resources
         ]
+        min_pool = 15 if task_type == "Long-context Memory" else max(4, min(8, len(graph_concepts)))
+        if len(pool) < min_pool:
+            pool.extend(_derived_context_resources(idx, concept, prereqs, graph, needed=min_pool - len(pool)))
         if not pool:
-            pool = [Resource(resource_id=f"concept_{concept.node_id}", type="explanation", text=concept.text, concepts=[concept.node_id])]
-        if task_type == "Long-context Memory" and len(pool) < 15:
-            pool.extend(_derived_context_resources(idx, concept, prereqs, graph, needed=15 - len(pool)))
+            pool = [
+                Resource(
+                    resource_id=f"concept_{idx}_{concept.node_id}",
+                    type="explanation",
+                    text=concept.text,
+                    concepts=[concept.node_id],
+                    difficulty=0.58,
+                    metadata={"derived_from_real_concept": concept.node_id},
+                )
+            ]
         profile_mastery = {item: 0.35 for item in prereqs[:5]}
         profile_mastery[concept.node_id] = 0.2
         horizon = 42 if task_type in {"Adaptive Replan", "Retention Planning", "Long-context Memory"} else 30
@@ -325,6 +338,14 @@ def _track1_difficulty_profile(idx: int) -> tuple[str, float, float, int]:
         ("Hard", 0.78, 0.80, 14),
     )
     return profiles[idx % len(profiles)]
+
+
+def _track2_concept_order(graph: TextResourceGraph) -> list[Any]:
+    concepts = [node for node in graph.nodes.values() if node.type == "concept"]
+    with_prereqs = [node for node in concepts if graph.prerequisites_of(node.node_id)]
+    if with_prereqs:
+        return with_prereqs
+    return concepts
 
 
 def _track1_perturbations(difficulty: str, targets: list[str]) -> list[dict[str, Any]]:

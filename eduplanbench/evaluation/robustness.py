@@ -42,6 +42,9 @@ def run_robustness(
                 "Agent": _agent_label(agent_name),
             }
             for horizon in ROBUSTNESS_HORIZONS:
+                row[f"H={horizon} GSR ↑"] = None
+                row[f"H={horizon} PR ↑"] = None
+            for horizon in ROBUSTNESS_HORIZONS:
                 trace_path = out_dir / f"{track}_{agent_name}_h{horizon}.jsonl.gz"
                 traces = _load_existing_traces(trace_path, expected=len(base_tasks))
                 if traces is None:
