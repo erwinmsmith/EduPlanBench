@@ -26,6 +26,8 @@ scripts/
   build_experiment_tables_compact_xlsx.py
 tests/
 configs/
+docs/
+  external_agents.md     External agent bridge setup and evaluation guide
 ```
 
 Generated data and outputs are intentionally ignored by git:
@@ -37,6 +39,10 @@ data/tasks/                 generated benchmark task instances
 outputs/                    run traces, metrics, reports, workbooks
 .env                        local API keys and private config
 ```
+
+## Documentation
+
+- [docs/external_agents.md](docs/external_agents.md): how to clone, bridge, enable, and evaluate external agent systems such as LLM+P, LATS, Plan-and-Act, ReAcTree, and HiAgent.
 
 ## Setup
 
