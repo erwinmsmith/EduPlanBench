@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import http.client
+import json
+
 from eduplanbench.agents import create_agent
 from eduplanbench.agents.external import external_agent_status
 from eduplanbench.core.env import build_external_llm_env, get_llm_settings
@@ -11,6 +14,7 @@ from eduplanbench.evaluation.metrics import evaluate_traces
 from eduplanbench.evaluation.metrics import _metrics_for_trace
 from eduplanbench.evaluation.tables import build_tables_from_experiment, _track1_difficulty, _track2_task_types
 from eduplanbench.experiments import run_experiment_matrix
+from eduplanbench.llm.openai_compatible import OpenAICompatibleClient
 from eduplanbench.core.schema import EpisodeTrace
 from eduplanbench.runner import run_benchmark
 from eduplanbench.simulators.bkt import RuleBKTStudentSimulator
@@ -71,6 +75,32 @@ def test_invalid_action_is_detected() -> None:
 def test_llm_flag_does_not_convert_rule_agent() -> None:
     agent = create_agent("random", llm="deepseek")
     assert agent.system_name == "random"
+
+
+def test_llm_client_retries_incomplete_chunk(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"choices": [{"message": {"content": "{\"ok\": true}"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise http.client.IncompleteRead(b"")
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    client = OpenAICompatibleClient(api_key="key", max_retries=1)
+
+    assert client.complete_json("return json") == {"ok": True}
+    assert calls["count"] == 2
 
 
 def test_random_task_sampling_is_seeded(tmp_path) -> None:

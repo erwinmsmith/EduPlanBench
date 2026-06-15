@@ -23,6 +23,12 @@ def main() -> None:
     parser.add_argument("--llm", default="deepseek")
     parser.add_argument("--tasks-dir", type=Path, default=Path("data/tasks"))
     parser.add_argument("--outputs-dir", type=Path, default=Path("outputs/runs"))
+    parser.add_argument(
+        "--experiment-dir",
+        type=Path,
+        default=None,
+        help="Reuse an existing main experiment directory and run/update tables plus robustness without rerunning main.",
+    )
     parser.add_argument("--main-limit", type=int, default=300)
     parser.add_argument("--robust-limit", type=int, default=50)
     parser.add_argument(
@@ -40,18 +46,24 @@ def main() -> None:
     agents = [item.strip() for item in args.agents.split(",") if item.strip()]
     robust_agents = agents if args.robust_agents == "same" else [item.strip() for item in args.robust_agents.split(",") if item.strip()]
 
-    experiment_dir = run_experiment_matrix(
-        tasks_dir=args.tasks_dir,
-        outputs_dir=args.outputs_dir,
-        tracks=tracks,
-        agents=agents,
-        limit=args.main_limit,
-        llm=args.llm,
-        seed=args.seed,
-        sample=args.sample,
-        sample_seed=args.sample_seed,
-    )
-    print(f"main experiment written to {experiment_dir}")
+    if args.experiment_dir is not None:
+        experiment_dir = args.experiment_dir
+        if not (experiment_dir / "matrix_results.csv").exists():
+            raise FileNotFoundError(f"missing main experiment matrix: {experiment_dir / 'matrix_results.csv'}")
+        print(f"reusing main experiment at {experiment_dir}")
+    else:
+        experiment_dir = run_experiment_matrix(
+            tasks_dir=args.tasks_dir,
+            outputs_dir=args.outputs_dir,
+            tracks=tracks,
+            agents=agents,
+            limit=args.main_limit,
+            llm=args.llm,
+            seed=args.seed,
+            sample=args.sample,
+            sample_seed=args.sample_seed,
+        )
+        print(f"main experiment written to {experiment_dir}")
 
     table_dir = experiment_dir / "tables"
     tables = build_tables_from_experiment(experiment_dir, table_dir)

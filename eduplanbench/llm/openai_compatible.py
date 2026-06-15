@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import http.client
+import socket
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -26,6 +28,8 @@ class OpenAICompatibleClient:
             api_key=settings["api_key"],
             base_url=settings["base_url"],
             model=settings["model"],
+            timeout=int(os.environ.get("EDUPLAN_LLM_TIMEOUT", "60")),
+            max_retries=int(os.environ.get("EDUPLAN_LLM_RETRIES", "4")),
         )
 
     def complete_json(self, prompt: str) -> dict[str, Any]:
@@ -56,10 +60,20 @@ class OpenAICompatibleClient:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     body = json.loads(response.read().decode("utf-8"))
                     return body["choices"][0]["message"]["content"]
-            except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.RemoteDisconnected, KeyError, json.JSONDecodeError) as exc:
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                ConnectionError,
+                socket.timeout,
+                http.client.HTTPException,
+                http.client.IncompleteRead,
+                OSError,
+                KeyError,
+                json.JSONDecodeError,
+            ) as exc:
                 last_error = exc
                 if attempt < self.max_retries:
-                    time.sleep(0.5 * (attempt + 1))
+                    time.sleep(min(8.0, 0.75 * (2**attempt)))
         raise RuntimeError(f"LLM request failed: {last_error}")
 
 
