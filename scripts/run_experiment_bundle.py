@@ -46,23 +46,21 @@ def main() -> None:
     agents = [item.strip() for item in args.agents.split(",") if item.strip()]
     robust_agents = agents if args.robust_agents == "same" else [item.strip() for item in args.robust_agents.split(",") if item.strip()]
 
+    experiment_dir = run_experiment_matrix(
+        tasks_dir=args.tasks_dir,
+        outputs_dir=args.outputs_dir,
+        tracks=tracks,
+        agents=agents,
+        limit=args.main_limit,
+        llm=args.llm,
+        seed=args.seed,
+        sample=args.sample,
+        sample_seed=args.sample_seed,
+        experiment_dir=args.experiment_dir,
+    )
     if args.experiment_dir is not None:
-        experiment_dir = args.experiment_dir
-        if not (experiment_dir / "matrix_results.csv").exists():
-            raise FileNotFoundError(f"missing main experiment matrix: {experiment_dir / 'matrix_results.csv'}")
-        print(f"reusing main experiment at {experiment_dir}")
+        print(f"main experiment resumed at {experiment_dir}")
     else:
-        experiment_dir = run_experiment_matrix(
-            tasks_dir=args.tasks_dir,
-            outputs_dir=args.outputs_dir,
-            tracks=tracks,
-            agents=agents,
-            limit=args.main_limit,
-            llm=args.llm,
-            seed=args.seed,
-            sample=args.sample,
-            sample_seed=args.sample_seed,
-        )
         print(f"main experiment written to {experiment_dir}")
 
     table_dir = experiment_dir / "tables"

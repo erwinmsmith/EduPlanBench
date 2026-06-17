@@ -409,7 +409,7 @@ python3 -m eduplanbench experiment \
   --sample-seed 42
 ```
 
-`--sample random` draws a fixed random subset from each track's task bank. Use `--sample-seed` to make the sampled task ids reproducible. Use `--sample first` only when you explicitly want the first N tasks in file order.
+`--sample random` draws a fixed random subset from each track's task bank. `--sample stratified` draws a fixed stratified subset by track-specific task metadata and is recommended for small or medium paper pilots. Use `--sample-seed` to make the sampled task ids reproducible. Use `--sample first` only when you explicitly want the first N tasks in file order.
 
 For paper experiments, the convenience bundle runs the main matrix, robustness, table generation, and compact Excel export in one command:
 
@@ -420,7 +420,7 @@ python3 scripts/run_experiment_bundle.py \
   --robust-agents one_shot,react \
   --agents react,one_shot,step_by_step,cot \
   --llm deepseek \
-  --sample random \
+  --sample stratified \
   --sample-seed 42
 ```
 
@@ -435,11 +435,28 @@ python3 scripts/run_experiment_bundle.py \
   --agents react,one_shot,step_by_step,cot,external:lats \
   --robust-agents react,external:lats \
   --llm deepseek \
-  --sample random \
+  --sample stratified \
   --sample-seed 42
 ```
 
 Use `--robust-agents same` only when you intentionally want robustness for every agent in `--agents`.
+
+Long external-agent experiments can be resumed. The bundle writes completed main-matrix rows incrementally and can rebuild `matrix_results.csv` from completed run directories even if an earlier process stopped before writing the matrix:
+
+```bash
+EDUPLAN_LLM_RETRIES=8 EDUPLAN_LLM_TIMEOUT=120 EDUPLAN_EXTERNAL_TIMEOUT_SECONDS=900 \
+python3 scripts/run_experiment_bundle.py \
+  --experiment-dir outputs/runs/experiment-YYYYMMDD-HHMMSS \
+  --main-limit 300 \
+  --robust-limit 50 \
+  --agents react,one_shot,step_by_step,cot,external:llm_pddl,external:lats,external:plan_and_act,external:reactree,external:hiagent \
+  --robust-agents same \
+  --llm deepseek \
+  --sample stratified \
+  --sample-seed 42
+```
+
+By default, an external bridge timeout falls back to the shared EduPlanBench bridge policy and records `external_bridge_fallback=true` in the action payload so a transient bridge failure does not invalidate the whole experiment. Set `EDUPLAN_EXTERNAL_STRICT=1` if you prefer external bridge errors to fail fast.
 
 The experiment directory is printed at the end, for example:
 

@@ -188,6 +188,24 @@ def test_enabled_external_agent_can_act(monkeypatch) -> None:
     assert action.payload["external_agent"] == "lats"
 
 
+def test_external_agent_timeout_falls_back(monkeypatch) -> None:
+    task = make_task()
+    env = EduPlanEnv(task, seed=1)
+    agent = create_agent("external:lats")
+    agent.task = task
+
+    def fail_send(request, *, required):
+        raise TimeoutError("bridge timed out")
+
+    monkeypatch.setattr(agent, "_send", fail_send)
+    action = agent.act(env.reset())
+
+    valid, error = action.validate_for(task.resource_pool)
+    assert valid, error
+    assert action.payload["external_agent"] == "lats"
+    assert action.payload["external_bridge_fallback"] is True
+
+
 def test_tables_include_external_agents(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("EDUPLAN_EXTERNAL_BRIDGE_USE_LLM", "0")
     track_dir = tmp_path / "tasks" / "track3_kt_simulator"
@@ -205,6 +223,36 @@ def test_tables_include_external_agents(monkeypatch, tmp_path) -> None:
 
     assert [row["Agent"] for row in rows] == ["LATS"]
     assert rows[0]["Overall ↑"] is not None
+
+
+def test_experiment_resume_rebuilds_missing_matrix(tmp_path) -> None:
+    track_dir = tmp_path / "tasks" / "track3_kt_simulator"
+    task = make_task()
+    write_jsonl(track_dir / "tasks.jsonl", [task])
+    experiment_dir = tmp_path / "runs" / "experiment-partial"
+    first_run = run_benchmark(
+        tasks_dir=tmp_path / "tasks",
+        outputs_dir=experiment_dir,
+        track="track3_kt_simulator",
+        agent_name="random",
+        limit=1,
+    )
+    assert not (experiment_dir / "matrix_results.csv").exists()
+
+    resumed = run_experiment_matrix(
+        tasks_dir=tmp_path / "tasks",
+        outputs_dir=tmp_path / "runs",
+        tracks=["track3_kt_simulator"],
+        agents=["random", "difficulty_rule"],
+        limit=1,
+        experiment_dir=experiment_dir,
+    )
+
+    assert resumed == experiment_dir
+    assert (experiment_dir / "matrix_results.csv").exists()
+    rows = json.loads((experiment_dir / "matrix_results.json").read_text(encoding="utf-8"))
+    assert [row["agent"] for row in rows] == ["random", "difficulty_rule"]
+    assert rows[0]["run_dir"] == str(first_run)
 
 
 def _trace_for_table(task: TaskInstance, *, final_mastery: float = 0.5) -> EpisodeTrace:

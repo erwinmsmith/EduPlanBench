@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from eduplanbench.agents import bridge_policy
 from eduplanbench.core.env import build_external_llm_env, get_llm_settings
 from eduplanbench.core.schema import Action, Observation, TaskInstance, to_plain
 
@@ -52,7 +53,7 @@ def load_external_agent_specs(config_path: Path | None = None) -> dict[str, Exte
             command=command,
             cwd=Path(cwd),
             endpoint=str(raw.get("endpoint") or ""),
-            timeout_seconds=int(raw.get("timeout_seconds", 300)),
+            timeout_seconds=int(os.environ.get("EDUPLAN_EXTERNAL_TIMEOUT_SECONDS", raw.get("timeout_seconds", 300))),
             notes=str(raw.get("notes") or ""),
         )
     return specs
@@ -129,7 +130,12 @@ class ExternalAgentAdapter:
                 "payload": "optional diagnostic/debug fields",
             },
         }
-        payload = self._send(request, required=True)
+        try:
+            payload = self._send(request, required=True)
+        except Exception as exc:
+            if _strict_external_errors():
+                raise
+            payload = self._fallback_payload(observation, exc)
         action = _action_from_payload(payload, observation)
         valid, _ = action.validate_for(observation.candidate_resources)
         if not valid and observation.candidate_resources and action.action_type not in {"diagnostic_quiz", "update_plan", "diagnose_misconception", "wait_or_reduce_load"}:
@@ -139,6 +145,19 @@ class ExternalAgentAdapter:
             action.payload["fallback_normalized"] = True
         action.payload.setdefault("external_agent", self.name)
         return action
+
+    def _fallback_payload(self, observation: Observation, exc: Exception) -> dict[str, Any]:
+        task = to_plain(self.task) if self.task else {}
+        payload = bridge_policy.fallback_action(self.name, task, to_plain(observation))
+        payload.setdefault("payload", {})
+        payload["payload"].update(
+            {
+                "external_agent": self.name,
+                "external_bridge_fallback": True,
+                "external_bridge_error": str(exc),
+            }
+        )
+        return payload
 
     def reflect(self, trace) -> str:
         payload = self._send({"event": "reflect", "agent": self.name, "llm": _public_llm_settings(), "trace": to_plain(trace)}, required=False)
@@ -287,6 +306,10 @@ def _normalize_external_name(name: str) -> str:
     if normalized.startswith("external:"):
         normalized = normalized.split(":", 1)[1]
     return normalized.replace("-", "_")
+
+
+def _strict_external_errors() -> bool:
+    return os.environ.get("EDUPLAN_EXTERNAL_STRICT", "").lower() in {"1", "true", "yes", "on"}
 
 
 def _resolve_path(value: str) -> Path:
