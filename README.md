@@ -146,7 +146,7 @@ data/tasks/track3_kt_simulator/tasks.jsonl
 After the Hugging Face dataset repo is published, set its repo id and download it into the repository root:
 
 ```bash
-export EDUPLAN_HF_DATASET_REPO=erwinmsmith/EduPlanBench-data
+export EDUPLAN_HF_DATASET_REPO=authorname/EduPlanBench-data
 
 python3 scripts/download_prepared_data_from_hf.py \
   --repo-id "$EDUPLAN_HF_DATASET_REPO" \
@@ -160,7 +160,7 @@ You can also download directly from the Hugging Face branch/revision root:
 
 ```bash
 python3 scripts/download_prepared_data_from_hf.py \
-  --repo-id erwinmsmith/EduPlanBench-data \
+  --repo-id authorname/EduPlanBench-data \
   --revision 35k \
   --path-in-repo . \
   --data-dir data
@@ -184,7 +184,7 @@ To publish the local prepared data to Hugging Face, log in first and upload `dat
 hf auth login
 
 python3 scripts/upload_prepared_data_to_hf.py \
-  --repo-id erwinmsmith/EduPlanBench-data \
+  --repo-id authorname/EduPlanBench-data \
   --version 10k \
   --data-dir data
 ```
