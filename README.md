@@ -120,7 +120,8 @@ EDUPLAN_EXTERNAL_BRIDGE_USE_LLM=0      # deterministic bridge fallback, useful f
 
 ## Prepared Data From Hugging Face
 
-The fastest server setup is to download an already prepared `data/` artifact from [erwinmsmith/EduPlanBench-data](https://huggingface.co/datasets/erwinmsmith/EduPlanBench-data).
+The data repository has already been uploaded to Hugging Face. However, to comply with double-blind review requirements, it will be made publicly available at authorname/EduPlanBench-data upon acceptance.
+
 
 Prepared data is exposed in two ways:
 
